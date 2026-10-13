@@ -15,11 +15,26 @@ enum Shell {
         ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
     }
 
+    private static let inheritedClaudeSessionKeys = [
+        "CLAUDECODE",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ATTENDED",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_MESSAGING_TOKEN",
+    ]
+
     static func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        // Don't let Claude Code think it is nested inside another Claude Code session.
-        env.removeValue(forKey: "CLAUDECODE")
-        env.removeValue(forKey: "CLAUDE_CODE_ENTRYPOINT")
+        // If Claudeman was launched from inside a Claude Code session, drop that session's
+        // markers so each `claude` starts as a normal top-level session (with transcripts saved)
+        // and doesn't inherit the parent's messaging socket or token.
+        // User configuration such as CLAUDE_CODE_USE_BEDROCK is left alone.
+        for key in inheritedClaudeSessionKeys { env.removeValue(forKey: key) }
 
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
