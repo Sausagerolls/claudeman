@@ -2,3 +2,4 @@
 .swiftpm/
 build/
 *.app
+.DS_Store
