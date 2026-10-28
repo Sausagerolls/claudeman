@@ -59,7 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Needed when run as a bare SwiftPM executable rather than an .app bundle.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        MainActor.assumeIsolated { AppModel.shared.applyPreferences() }
+        MainActor.assumeIsolated {
+            AppModel.shared.applyPreferences()
+            RemoteAccess.shared.applySettings()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

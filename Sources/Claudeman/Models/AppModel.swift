@@ -32,8 +32,10 @@ final class AppModel: ObservableObject {
     private var sessionCounters: [UUID: Int] = [:]
 
     private init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Claudeman", isDirectory: true)
+        // CLAUDEMAN_DATA_DIR lets a development build use its own project list.
+        let support = ProcessInfo.processInfo.environment["CLAUDEMAN_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Claudeman", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         storeURL = support.appendingPathComponent("projects.json")
         load()
@@ -41,7 +43,14 @@ final class AppModel: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyPreferences() }
+            // Defer: this notification is posted synchronously from inside any defaults write,
+            // which may happen while a shared object is still being initialised.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.applyPreferences()
+                    RemoteAccess.shared.applySettings()
+                }
+            }
         }
     }
 
@@ -126,22 +135,35 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func openSession(for project: Project, mode: LaunchMode) -> TerminalSession? {
+    func openSession(for project: Project, mode: LaunchMode, select shouldSelect: Bool = true) -> TerminalSession? {
         guard project.folderExists else { return nil }
         let session = makeSession(for: project, mode: mode)
         sessions.append(session)
-        select(session)
+        if shouldSelect {
+            select(session)
+        } else if selectedSessionIDs[project.id] == nil {
+            selectedSessionIDs[project.id] = session.id
+        }
         return session
     }
 
-    /// Replaces a finished session with a fresh one in the same tab position.
-    func restart(_ old: TerminalSession, mode: LaunchMode) {
+    /// Replaces a session with a fresh one in the same tab position.
+    @discardableResult
+    func restart(_ old: TerminalSession, mode: LaunchMode, select shouldSelect: Bool = true) -> TerminalSession? {
         guard let project = project(id: old.projectID), project.folderExists,
-              let index = sessions.firstIndex(where: { $0.id == old.id }) else { return }
+              let index = sessions.firstIndex(where: { $0.id == old.id }) else { return nil }
         old.terminate()
         let session = makeSession(for: project, mode: mode)
         sessions[index] = session
-        select(session)
+        if shouldSelect || selectedSessionIDs[project.id] == old.id {
+            selectedSessionIDs[project.id] = session.id
+        }
+        if shouldSelect { selectedProjectID = project.id }
+        return session
+    }
+
+    func session(id: UUID) -> TerminalSession? {
+        sessions.first { $0.id == id }
     }
 
     func close(_ session: TerminalSession) {

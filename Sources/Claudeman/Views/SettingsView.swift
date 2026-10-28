@@ -10,6 +10,8 @@ struct SettingsView: View {
                 .tabItem { Label("Terminal", systemImage: "terminal") }
             ProjectSettings()
                 .tabItem { Label("Projects", systemImage: "folder") }
+            RemoteSettingsView()
+                .tabItem { Label("Remote", systemImage: "iphone.radiowaves.left.and.right") }
         }
         .frame(width: 520)
     }

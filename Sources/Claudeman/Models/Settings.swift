@@ -1,4 +1,5 @@
 import AppKit
+import ClaudemanKit
 import SwiftTerm
 
 enum SettingsKey {
@@ -15,6 +16,8 @@ enum SettingsKey {
     static let confirmQuit = "confirmQuit"
     static let showProjectPaths = "showProjectPaths"
     static let cloneDirectory = "cloneDirectory"
+    static let remoteEnabled = "remoteEnabled"
+    static let remotePort = "remotePort"
 }
 
 enum SettingsDefault {
@@ -121,6 +124,13 @@ extension UserDefaults {
 
     var confirmCloseRunning: Bool { object(forKey: SettingsKey.confirmCloseRunning) as? Bool ?? true }
     var confirmQuit: Bool { object(forKey: SettingsKey.confirmQuit) as? Bool ?? true }
+
+    var remoteEnabled: Bool { bool(forKey: SettingsKey.remoteEnabled) }
+
+    var remotePort: UInt16 {
+        let value = integer(forKey: SettingsKey.remotePort)
+        return (1024...65535).contains(value) ? UInt16(value) : RemoteAPI.defaultPort
+    }
 
     var cloneDirectory: String {
         let value = string(forKey: SettingsKey.cloneDirectory) ?? ""

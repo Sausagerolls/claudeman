@@ -33,9 +33,10 @@ struct SessionView: View {
     }
 
     private var endedMessage: String {
-        if let code = session.exitCode, code != 0 {
-            return "Session ended (exit code \(code))"
+        switch session.exitCode {
+        case 129, 143: return "Session stopped"   // SIGHUP / SIGTERM
+        case let code? where code != 0: return "Session ended (exit code \(code))"
+        default: return "Session ended"
         }
-        return "Session ended"
     }
 }

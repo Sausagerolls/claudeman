@@ -8,6 +8,7 @@ final class TerminalSession: ObservableObject, Identifiable {
     let projectID: UUID
     let name: String
     let mode: LaunchMode
+    let startedAt = Date()
     let terminalView: LocalProcessTerminalView
 
     @Published private(set) var title = ""

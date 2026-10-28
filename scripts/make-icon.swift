@@ -1,4 +1,5 @@
-// Renders the Claudeman app icon and packs it into Resources/AppIcon.icns.
+// Renders the Claudeman app icon and packs it into Resources/AppIcon.icns,
+// plus a full-bleed square version for the iOS companion app.
 // Usage: swift scripts/make-icon.swift
 import AppKit
 
@@ -9,7 +10,7 @@ func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
             blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
 }
 
-func render() -> NSBitmapImageRep {
+func render(fullBleed: Bool = false) -> NSBitmapImageRep {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size),
                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
@@ -18,8 +19,13 @@ func render() -> NSBitmapImageRep {
     let ctx = NSGraphicsContext.current!.cgContext
 
     // macOS icon grid: 824pt body inset 100pt, with a soft drop shadow.
+    // iOS wants an opaque square that the system masks itself, so scale the body to fill it.
     let body = NSRect(x: 100, y: 100, width: 824, height: 824)
-    let bodyPath = NSBezierPath(roundedRect: body, xRadius: 185, yRadius: 185)
+    let bodyPath = fullBleed ? NSBezierPath(rect: body) : NSBezierPath(roundedRect: body, xRadius: 185, yRadius: 185)
+    if fullBleed {
+        ctx.scaleBy(x: size / 824, y: size / 824)
+        ctx.translateBy(x: -100, y: -100)
+    }
 
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: color(0x000000, 0.35).cgColor)
@@ -112,6 +118,9 @@ for base in [16, 32, 128, 256, 512] {
         process.waitUntilExit()
     }
 }
+
+let iosIcon = root.appendingPathComponent("iOS/ClaudemanRemote/Assets.xcassets/AppIcon.appiconset/AppIcon.png")
+try! render(fullBleed: true).representation(using: .png, properties: [:])!.write(to: iosIcon)
 
 let iconutil = Process()
 iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")

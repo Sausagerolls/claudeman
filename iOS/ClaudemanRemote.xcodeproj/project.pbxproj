@@ -1,0 +1,396 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		079ACDAA1665D26428730D0F /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4D7F44FA9141DAAE4B0C39 /* DashboardView.swift */; };
+		0FFE7F46E4BFE803F7E1A936 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20ED7B01A3372CCB6E793154 /* Assets.xcassets */; };
+		2700D3C324E7732F90681318 /* AddMacView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743297309EAF42234FE47963 /* AddMacView.swift */; };
+		2E5DD84FFF45A667A29ABED8 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A6E83034051B12831F747B /* Discovery.swift */; };
+		65B795E9B7055E70CC7CCEF9 /* PairedMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2E8B385B52BE5AF3D4C2EC /* PairedMac.swift */; };
+		D069FABE9A81A10B322351FE /* ClaudemanRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA7FF11B159672BD370639E /* ClaudemanRemoteApp.swift */; };
+		D0ADA525C6326E7CBAC8B446 /* RemoteClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33820E07CF4C5B410083CEEA /* RemoteClient.swift */; };
+		E902D9654EA64FAE9BE920D2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE96B7209B30597599A3E4EF /* RootView.swift */; };
+		FB80AA3151DF2CD24B8CE693 /* ClaudemanKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA1B3EFCF1CFAD264C74BA6F /* ClaudemanKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		08A6E83034051B12831F747B /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
+		1560CBBE54F9E421977230ED /* ClaudemanKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ClaudemanKit; path = ../Packages/ClaudemanKit; sourceTree = SOURCE_ROOT; };
+		1D2F5A753B50C4227ADF5CAB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		20ED7B01A3372CCB6E793154 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		33820E07CF4C5B410083CEEA /* RemoteClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteClient.swift; sourceTree = "<group>"; };
+		56A0CB723EDF9550B0DB3526 /* ClaudemanRemote.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ClaudemanRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		743297309EAF42234FE47963 /* AddMacView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddMacView.swift; sourceTree = "<group>"; };
+		ACA7FF11B159672BD370639E /* ClaudemanRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudemanRemoteApp.swift; sourceTree = "<group>"; };
+		BE96B7209B30597599A3E4EF /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		CA4D7F44FA9141DAAE4B0C39 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		CF2E8B385B52BE5AF3D4C2EC /* PairedMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMac.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4566F067C3D27C318DC7775C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FB80AA3151DF2CD24B8CE693 /* ClaudemanKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1C59D7B6B22E599B10CED011 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				08A6E83034051B12831F747B /* Discovery.swift */,
+				CF2E8B385B52BE5AF3D4C2EC /* PairedMac.swift */,
+				33820E07CF4C5B410083CEEA /* RemoteClient.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		537C5BCBE6BAF53E4872F429 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				56A0CB723EDF9550B0DB3526 /* ClaudemanRemote.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6332A8B776569A1273CA8E46 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				1560CBBE54F9E421977230ED /* ClaudemanKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		8B4927EEFBFA42156F762A96 = {
+			isa = PBXGroup;
+			children = (
+				CB1BABDB24E20AACC830780D /* ClaudemanRemote */,
+				6332A8B776569A1273CA8E46 /* Packages */,
+				537C5BCBE6BAF53E4872F429 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CB1BABDB24E20AACC830780D /* ClaudemanRemote */ = {
+			isa = PBXGroup;
+			children = (
+				20ED7B01A3372CCB6E793154 /* Assets.xcassets */,
+				ACA7FF11B159672BD370639E /* ClaudemanRemoteApp.swift */,
+				1D2F5A753B50C4227ADF5CAB /* Info.plist */,
+				1C59D7B6B22E599B10CED011 /* Models */,
+				E4E1272DD332B945F909A666 /* Views */,
+			);
+			path = ClaudemanRemote;
+			sourceTree = "<group>";
+		};
+		E4E1272DD332B945F909A666 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				743297309EAF42234FE47963 /* AddMacView.swift */,
+				CA4D7F44FA9141DAAE4B0C39 /* DashboardView.swift */,
+				BE96B7209B30597599A3E4EF /* RootView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA9AEF82ABA6106214D9511A /* ClaudemanRemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 543EE30F6DD5D03DC22B4B43 /* Build configuration list for PBXNativeTarget "ClaudemanRemote" */;
+			buildPhases = (
+				EA5478A7691D20E4216B47D0 /* Sources */,
+				F2A7B7CE5561B7013FC273FD /* Resources */,
+				4566F067C3D27C318DC7775C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ClaudemanRemote;
+			packageProductDependencies = (
+				AA1B3EFCF1CFAD264C74BA6F /* ClaudemanKit */,
+			);
+			productName = ClaudemanRemote;
+			productReference = 56A0CB723EDF9550B0DB3526 /* ClaudemanRemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2F09445AF6B51B1C928CE2D0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					AA9AEF82ABA6106214D9511A = {
+						DevelopmentTeam = J4UJD4Z33J;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = AD719817C0E79934CF96EA21 /* Build configuration list for PBXProject "ClaudemanRemote" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8B4927EEFBFA42156F762A96;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2CC2BDE1050C114049B25A6D /* XCLocalSwiftPackageReference "../Packages/ClaudemanKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 537C5BCBE6BAF53E4872F429 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA9AEF82ABA6106214D9511A /* ClaudemanRemote */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F2A7B7CE5561B7013FC273FD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FFE7F46E4BFE803F7E1A936 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EA5478A7691D20E4216B47D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2700D3C324E7732F90681318 /* AddMacView.swift in Sources */,
+				D069FABE9A81A10B322351FE /* ClaudemanRemoteApp.swift in Sources */,
+				079ACDAA1665D26428730D0F /* DashboardView.swift in Sources */,
+				2E5DD84FFF45A667A29ABED8 /* Discovery.swift in Sources */,
+				65B795E9B7055E70CC7CCEF9 /* PairedMac.swift in Sources */,
+				D0ADA525C6326E7CBAC8B446 /* RemoteClient.swift in Sources */,
+				E902D9654EA64FAE9BE920D2 /* RootView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		36257C37A561935CA6E69F48 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4UJD4Z33J;
+				INFOPLIST_FILE = ClaudemanRemote/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sausagerolls.claudeman.remote;
+				PRODUCT_NAME = "Claudeman Remote";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7DBBCDCBB4B35707D5FBC8FA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8C29D981B3F45DDE2EB0D84B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FD556CAE6597CAEE38ED2336 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J4UJD4Z33J;
+				INFOPLIST_FILE = ClaudemanRemote/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.3.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sausagerolls.claudeman.remote;
+				PRODUCT_NAME = "Claudeman Remote";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		543EE30F6DD5D03DC22B4B43 /* Build configuration list for PBXNativeTarget "ClaudemanRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				36257C37A561935CA6E69F48 /* Debug */,
+				FD556CAE6597CAEE38ED2336 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AD719817C0E79934CF96EA21 /* Build configuration list for PBXProject "ClaudemanRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7DBBCDCBB4B35707D5FBC8FA /* Debug */,
+				8C29D981B3F45DDE2EB0D84B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2CC2BDE1050C114049B25A6D /* XCLocalSwiftPackageReference "../Packages/ClaudemanKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/ClaudemanKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA1B3EFCF1CFAD264C74BA6F /* ClaudemanKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClaudemanKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 2F09445AF6B51B1C928CE2D0 /* Project object */;
+}

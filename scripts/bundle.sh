@@ -43,6 +43,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSLocalNetworkUsageDescription</key><string>Claudeman uses the local network so the Claudeman Remote app on your iPhone or iPad can find this Mac and control sessions.</string>
+    <key>NSBonjourServices</key><array><string>_claudeman._tcp</string></array>
 </dict>
 </plist>
 PLIST

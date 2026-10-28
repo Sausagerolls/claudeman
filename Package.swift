@@ -6,11 +6,12 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.2.0"),
+        .package(path: "Packages/ClaudemanKit"),
     ],
     targets: [
         .executableTarget(
             name: "Claudeman",
-            dependencies: ["SwiftTerm"],
+            dependencies: ["SwiftTerm", "ClaudemanKit"],
             path: "Sources/Claudeman"
         ),
     ]
