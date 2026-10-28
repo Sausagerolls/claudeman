@@ -216,18 +216,6 @@ private struct SessionRow: View {
                     Text(session.title).font(.subheadline).lineLimit(2)
                 }
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                if session.isRunning, let remoteName = session.remoteControlName {
-                    Button {
-                        openInClaude()
-                    } label: {
-                        Label("Open in Claude", systemImage: "bubble.left.and.text.bubble.right")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .padding(.top, 4)
-                    .accessibilityHint("Chat in this session as “\(remoteName)” in the Claude app")
-                }
             }
             Spacer()
             if isBusy {
@@ -238,9 +226,6 @@ private struct SessionRow: View {
                         ForEach(RemoteLaunchMode.allCases, id: \.self) { mode in
                             Button(mode.title, systemImage: mode.systemImage) { onAction(.restart(mode)) }
                         }
-                    }
-                    if session.isRunning, session.remoteControlName != nil {
-                        Button("Open in Claude", systemImage: "bubble.left.and.text.bubble.right") { openInClaude() }
                     }
                     if session.isRunning {
                         Button("Stop", systemImage: "stop.circle", role: .destructive) { onAction(.stop) }
@@ -269,11 +254,6 @@ private struct SessionRow: View {
                 Button(role: .destructive) { onAction(.close) } label: { Label("Close", systemImage: "xmark") }
             }
         }
-    }
-
-    /// claude.ai/code is a universal link: it opens the Claude app when installed, otherwise Safari.
-    private func openInClaude() {
-        if let url = URL(string: "https://claude.ai/code") { UIApplication.shared.open(url) }
     }
 
     private var subtitle: String {

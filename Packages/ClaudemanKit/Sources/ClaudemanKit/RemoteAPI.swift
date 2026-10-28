@@ -124,18 +124,14 @@ public struct RemoteSession: Codable, Identifiable, Hashable, Sendable {
     public var isRunning: Bool
     public var exitCode: Int32?
     public var startedAt: Date
-    /// Name of the session in the Claude app when it was started with Remote Control; nil otherwise.
-    /// Optional so older Macs and phones stay compatible.
-    public var remoteControlName: String?
 
-    public init(id: UUID, name: String, title: String, isRunning: Bool, exitCode: Int32?, startedAt: Date, remoteControlName: String? = nil) {
+    public init(id: UUID, name: String, title: String, isRunning: Bool, exitCode: Int32?, startedAt: Date) {
         self.id = id
         self.name = name
         self.title = title
         self.isRunning = isRunning
         self.exitCode = exitCode
         self.startedAt = startedAt
-        self.remoteControlName = remoteControlName
     }
 }
 

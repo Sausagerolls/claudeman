@@ -254,10 +254,7 @@ private extension LaunchMode {
 
 extension TerminalSession {
     var remote: RemoteSession {
-        RemoteSession(
-            id: id, name: name, title: title, isRunning: isRunning, exitCode: exitCode,
-            startedAt: startedAt, remoteControlName: remoteControlName
-        )
+        RemoteSession(id: id, name: name, title: title, isRunning: isRunning, exitCode: exitCode, startedAt: startedAt)
     }
 }
 

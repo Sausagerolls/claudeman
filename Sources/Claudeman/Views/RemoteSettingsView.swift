@@ -6,25 +6,16 @@ struct RemoteSettingsView: View {
     @ObservedObject private var remote = RemoteAccess.shared
     @AppStorage(SettingsKey.remoteEnabled) private var enabled = false
     @AppStorage(SettingsKey.remotePort) private var port = Int(RemoteAPI.defaultPort)
-    @AppStorage(SettingsKey.remoteControl) private var claudeRemoteControl = false
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Enable Claude Remote Control for sessions", isOn: $claudeRemoteControl)
-            } header: {
-                Text("Chat From Your Phone")
-            } footer: {
-                Text("New sessions start with `claude --remote-control`, so you can continue them in the Claude iPhone app or at claude.ai/code: send messages, attach photos and approve prompts. Sessions are named “Project · Session N”. Requires signing in to Claude Code with your Claude account.")
-            }
-
             Section {
                 Toggle("Allow remote control from iPhone and iPad", isOn: $enabled)
                 TextField("Port", value: $port, format: .number.grouping(.never))
                     .disabled(!enabled)
                 LabeledContent("Status") { statusLabel }
             } footer: {
-                Text("The Claudeman Remote app can list projects and start, continue, restart or stop sessions. To chat in a session, use the Claude app with Remote Control.")
+                Text("Paired devices can list projects and start, restart or stop sessions. They can't see or type into a session.")
             }
 
             if enabled {
