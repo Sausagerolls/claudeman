@@ -5,6 +5,8 @@ public extension RemoteAPI.Path {
     static func chat(_ sessionID: UUID) -> String { "/api/sessions/\(sessionID.uuidString)/chat" }
     /// POST: text and/or keys to type into the session.
     static func input(_ sessionID: UUID) -> String { "/api/sessions/\(sessionID.uuidString)/input" }
+    /// GET: the bytes of an image referenced by a `ChatImage`.
+    static func image(_ sessionID: UUID, _ imageID: String) -> String { "/api/sessions/\(sessionID.uuidString)/images/\(imageID)" }
     /// POST raw image bytes; returns an attachment id to reference in `InputRequest`.
     static func attachments(_ sessionID: UUID) -> String { "/api/sessions/\(sessionID.uuidString)/attachments" }
 }
@@ -32,14 +34,32 @@ public struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     /// Number of images attached to a user message.
     public var imageCount: Int
     public var timestamp: Date?
+    /// Images to show with the message, fetched with `RemoteAPI.Path.image`.
+    /// Optional so older Macs and phones stay compatible.
+    public var images: [ChatImage]?
 
-    public init(id: String, kind: Kind, text: String, toolName: String? = nil, imageCount: Int = 0, timestamp: Date? = nil) {
+    public init(id: String, kind: Kind, text: String, toolName: String? = nil, imageCount: Int = 0,
+                timestamp: Date? = nil, images: [ChatImage]? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
         self.toolName = toolName
         self.imageCount = imageCount
         self.timestamp = timestamp
+        self.images = images
+    }
+}
+
+/// An image in the conversation: a photo you sent, or one Claude viewed, created or mentioned.
+public struct ChatImage: Codable, Hashable, Identifiable, Sendable {
+    /// Letters, digits and dashes only; unique within the session.
+    public var id: String
+    /// File name to suggest when sharing, e.g. "chart.png".
+    public var name: String?
+
+    public init(id: String, name: String? = nil) {
+        self.id = id
+        self.name = name
     }
 }
 

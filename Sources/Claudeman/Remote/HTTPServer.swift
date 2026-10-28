@@ -19,6 +19,8 @@ struct HTTPResponse {
     var status: Int
     var body: Data
     var contentType = "application/json"
+    /// Images are immutable per id, so clients may cache them.
+    var cacheable = false
 
     static func json<T: Encodable>(_ value: T, status: Int = 200) -> HTTPResponse {
         let data = (try? encoder.encode(value)) ?? Data()
@@ -151,7 +153,7 @@ final class HTTPServer: @unchecked Sendable {
         var head = "HTTP/1.1 \(response.status) \(response.reason)\r\n"
         head += "Content-Type: \(response.contentType)\r\n"
         head += "Content-Length: \(response.body.count)\r\n"
-        head += "Cache-Control: no-store\r\n"
+        head += response.cacheable ? "Cache-Control: private, max-age=604800\r\n" : "Cache-Control: no-store\r\n"
         head += "Connection: close\r\n\r\n"
         var data = Data(head.utf8)
         data.append(response.body)

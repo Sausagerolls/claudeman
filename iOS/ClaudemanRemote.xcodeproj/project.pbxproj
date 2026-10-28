@@ -12,6 +12,7 @@
 		2700D3C324E7732F90681318 /* AddMacView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743297309EAF42234FE47963 /* AddMacView.swift */; };
 		2E5DD84FFF45A667A29ABED8 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A6E83034051B12831F747B /* Discovery.swift */; };
 		3EF9544D3F844EE45E863B41 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2135A9919101E35BE7B07F7 /* QRScannerView.swift */; };
+		4021C1EC9FCDB869D9F0E52C /* ChatImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8E99A11D9F5D78EB432600 /* ChatImages.swift */; };
 		65B795E9B7055E70CC7CCEF9 /* PairedMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2E8B385B52BE5AF3D4C2EC /* PairedMac.swift */; };
 		C4E2637624754985013949E8 /* SessionChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6849CBD8A52B543CFE57E4F1 /* SessionChatView.swift */; };
 		D069FABE9A81A10B322351FE /* ClaudemanRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA7FF11B159672BD370639E /* ClaudemanRemoteApp.swift */; };
@@ -34,6 +35,7 @@
 		CA4D7F44FA9141DAAE4B0C39 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		CF2E8B385B52BE5AF3D4C2EC /* PairedMac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedMac.swift; sourceTree = "<group>"; };
 		F2135A9919101E35BE7B07F7 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		FD8E99A11D9F5D78EB432600 /* ChatImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatImages.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,6 +101,7 @@
 			isa = PBXGroup;
 			children = (
 				743297309EAF42234FE47963 /* AddMacView.swift */,
+				FD8E99A11D9F5D78EB432600 /* ChatImages.swift */,
 				CA4D7F44FA9141DAAE4B0C39 /* DashboardView.swift */,
 				F2135A9919101E35BE7B07F7 /* QRScannerView.swift */,
 				BE96B7209B30597599A3E4EF /* RootView.swift */,
@@ -184,6 +187,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2700D3C324E7732F90681318 /* AddMacView.swift in Sources */,
+				4021C1EC9FCDB869D9F0E52C /* ChatImages.swift in Sources */,
 				D069FABE9A81A10B322351FE /* ClaudemanRemoteApp.swift in Sources */,
 				079ACDAA1665D26428730D0F /* DashboardView.swift in Sources */,
 				2E5DD84FFF45A667A29ABED8 /* Discovery.swift in Sources */,

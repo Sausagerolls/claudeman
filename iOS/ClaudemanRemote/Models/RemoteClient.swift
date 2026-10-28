@@ -72,6 +72,18 @@ struct RemoteClient: Sendable {
         let _: [String: Bool] = try await send("POST", RemoteAPI.Path.answer(sessionID), body: answer)
     }
 
+    /// Raw bytes of an image in the conversation.
+    func imageData(sessionID: UUID, imageID: String) async throws -> Data {
+        guard let url = URL(string: RemoteAPI.Path.image(sessionID, imageID), relativeTo: baseURL) else { throw RemoteError.badAddress }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 30
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await Self.session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw RemoteError.server("Image unavailable.", status: status) }
+        return data
+    }
+
     /// Uploads a JPEG and returns its attachment id.
     func uploadImage(sessionID: UUID, jpeg: Data) async throws -> String {
         let response: AttachmentResponse = try await send(

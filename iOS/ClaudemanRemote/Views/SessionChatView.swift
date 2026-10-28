@@ -49,6 +49,7 @@ struct SessionChatView: View {
 
     var body: some View {
         conversation
+            .environment(\.chatImageLoader, ChatImageLoader(client: client, sessionID: sessionID))
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .navigationTitle(session?.name ?? "Session")
             .navigationBarTitleDisplayMode(.inline)
@@ -135,7 +136,8 @@ struct SessionChatView: View {
                         }
                     }
                     ForEach(outbox) { message in
-                        UserBubble(text: message.text, thumbnails: message.thumbnails, imageCount: message.thumbnails.count, isPending: true)
+                        UserBubble(text: message.text, thumbnails: message.thumbnails, images: [],
+                                   imageCount: message.thumbnails.count, isPending: true)
                     }
                     if isWorking && prompt == nil {
                         WorkingIndicator(label: activity?.label)
@@ -684,9 +686,14 @@ private struct MessageView: View {
     var body: some View {
         switch message.kind {
         case .user:
-            UserBubble(text: message.text, thumbnails: [], imageCount: message.imageCount, isPending: false)
+            UserBubble(text: message.text, thumbnails: [], images: message.images ?? [],
+                       imageCount: message.imageCount, isPending: false)
         case .assistant:
-            AssistantText(text: message.text)
+            VStack(alignment: .leading, spacing: 8) {
+                if !message.text.isEmpty { AssistantText(text: message.text) }
+                if let images = message.images, !images.isEmpty { ChatImageStrip(images: images) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         case .tool:
             ToolGroupView(tools: [message])
         }
@@ -696,6 +703,8 @@ private struct MessageView: View {
 private struct UserBubble: View {
     let text: String
     let thumbnails: [UIImage]
+    /// Photos from the transcript, loaded from the Mac.
+    let images: [ChatImage]
     let imageCount: Int
     let isPending: Bool
 
@@ -714,8 +723,11 @@ private struct UserBubble: View {
                         }
                     }
                 }
-                // Photos from the transcript (no local thumbnail) show as a badge inside the bubble.
-                let badge = thumbnails.isEmpty && imageCount > 0
+                if !images.isEmpty {
+                    ChatImageStrip(images: images)
+                }
+                // Older Macs don't send image ids; fall back to a badge inside the bubble.
+                let badge = thumbnails.isEmpty && images.isEmpty && imageCount > 0
                 if !text.isEmpty || badge {
                     VStack(alignment: .trailing, spacing: 4) {
                         if badge {

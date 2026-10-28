@@ -13,6 +13,18 @@ final class TranscriptReader {
     /// Bumped whenever `messages` is rebuilt from scratch, so clients know to reset.
     private(set) var generation = 0
 
+    /// Where each image in `messages` comes from, by `ChatImage.id`.
+    private(set) var images: [String: ImageSource] = [:]
+
+    enum ImageSource {
+        /// Embedded in the transcript, as Claude Code stores pasted images and image tool results.
+        case inline(mediaType: String, base64: String)
+        /// A file on disk that Claude wrote or mentioned.
+        case file(String)
+    }
+
+    private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "heic"]
+
     private var offset: UInt64 = 0
     private var partialLine = Data()
 
@@ -31,6 +43,7 @@ final class TranscriptReader {
             offset = 0
             partialLine = Data()
             messages = []
+            images = [:]
             generation += 1
         }
         guard size > offset else { return }
@@ -48,7 +61,7 @@ final class TranscriptReader {
         }
         for line in buffer.split(separator: UInt8(ascii: "\n")) {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            messages += Self.messages(from: object)
+            messages += parse(object)
         }
     }
 
@@ -96,47 +109,75 @@ final class TranscriptReader {
         return formatter
     }()
 
-    private static func messages(from record: [String: Any]) -> [ChatMessage] {
+    private func parse(_ record: [String: Any]) -> [ChatMessage] {
         guard let type = record["type"] as? String, type == "user" || type == "assistant",
               record["isSidechain"] as? Bool != true, record["isMeta"] as? Bool != true,
               let message = record["message"] as? [String: Any] else { return [] }
 
         let id = record["uuid"] as? String ?? UUID().uuidString
-        let timestamp = (record["timestamp"] as? String).flatMap(isoFormatter.date(from:))
+        let timestamp = (record["timestamp"] as? String).flatMap(Self.isoFormatter.date(from:))
 
         if type == "user" {
-            return userMessage(id: id, content: message["content"], timestamp: timestamp).map { [$0] } ?? []
+            return userMessages(id: id, content: message["content"], timestamp: timestamp)
         }
 
         guard let blocks = message["content"] as? [[String: Any]] else { return [] }
-        return blocks.enumerated().compactMap { index, block in
+        var result: [ChatMessage] = []
+        for (index, block) in blocks.enumerated() {
             let blockID = "\(id)-\(index)"
             switch block["type"] as? String {
             case "text":
                 let text = (block["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                return text.isEmpty ? nil : ChatMessage(id: blockID, kind: .assistant, text: text, timestamp: timestamp)
+                guard !text.isEmpty else { continue }
+                // Images Claude mentions by path ("Saved the chart to /tmp/chart.png").
+                let mentioned = Self.imagePaths(in: text).enumerated().map { n, path in
+                    registerFile(path, id: "\(blockID)-m\(n)")
+                }
+                result.append(ChatMessage(id: blockID, kind: .assistant, text: text, timestamp: timestamp,
+                                          images: mentioned.isEmpty ? nil : mentioned))
             case "tool_use":
-                let name = displayName(forTool: block["name"] as? String ?? "Tool")
-                let summary = toolSummary(block["input"] as? [String: Any] ?? [:])
-                return ChatMessage(id: blockID, kind: .tool, text: summary, toolName: name, timestamp: timestamp)
+                let input = block["input"] as? [String: Any] ?? [:]
+                let name = Self.displayName(forTool: block["name"] as? String ?? "Tool")
+                result.append(ChatMessage(id: blockID, kind: .tool, text: Self.toolSummary(input), toolName: name, timestamp: timestamp))
+                // An image Claude creates: show it once the file exists.
+                if ["Write", "Edit", "MultiEdit"].contains(block["name"] as? String ?? ""),
+                   let path = input["file_path"] as? String, Self.isImagePath(path) {
+                    let image = registerFile(path, id: "\(blockID)-f")
+                    result.append(ChatMessage(id: "\(blockID)-file", kind: .assistant, text: "", timestamp: timestamp, images: [image]))
+                }
             default:
-                return nil
+                continue
             }
         }
+        return result
     }
 
-    private static func userMessage(id: String, content: Any?, timestamp: Date?) -> ChatMessage? {
+    private func userMessages(id: String, content: Any?, timestamp: Date?) -> [ChatMessage] {
         var texts: [String] = []
-        var images = 0
+        var attached: [ChatImage] = []
+        var results: [ChatMessage] = []
 
         if let string = content as? String {
             texts.append(string)
         } else if let blocks = content as? [[String: Any]] {
-            for block in blocks {
+            for (index, block) in blocks.enumerated() {
                 switch block["type"] as? String {
-                case "text": texts.append(block["text"] as? String ?? "")
-                case "image": images += 1
-                default: break   // tool results are shown through the tool call instead
+                case "text":
+                    texts.append(block["text"] as? String ?? "")
+                case "image":
+                    if let image = registerInline(block, id: "\(id)-i\(index)") { attached.append(image) }
+                case "tool_result":
+                    // Images a tool returned to Claude (screenshots, image files it read) are shown
+                    // on Claude's side; other tool output appears through the tool call instead.
+                    let parts = block["content"] as? [[String: Any]] ?? []
+                    let shown = parts.enumerated().compactMap { n, part in
+                        part["type"] as? String == "image" ? registerInline(part, id: "\(id)-r\(index)-\(n)") : nil
+                    }
+                    if !shown.isEmpty {
+                        results.append(ChatMessage(id: "\(id)-r\(index)", kind: .assistant, text: "", timestamp: timestamp, images: shown))
+                    }
+                default:
+                    break
                 }
             }
         }
@@ -144,21 +185,76 @@ final class TranscriptReader {
         var parts: [String] = []
         for raw in texts {
             let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let command = slashCommand(in: text) {
+            if let command = Self.slashCommand(in: text) {
                 parts.append(command)
-            } else if text.isEmpty || text.hasPrefix("<") || text.hasPrefix("Caveat:") {
-                continue   // system reminders, command output and other injected context
+            } else if text.isEmpty || text.hasPrefix("<") || text.hasPrefix("Caveat:") || text.hasPrefix("[Image: source:") {
+                continue   // system reminders, command output, image source notes and other injected context
             } else {
                 parts.append(text)
             }
         }
 
-        // Pasted photos appear as "[Image #1]" placeholders; the app shows a photo badge instead.
+        // Pasted photos appear as "[Image #1]" placeholders; the app shows the photos instead.
         let text = parts.joined(separator: "\n\n")
             .replacingOccurrences(of: #"\[Image #\d+\]\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || images > 0 else { return nil }
-        return ChatMessage(id: id, kind: .user, text: text, imageCount: images, timestamp: timestamp)
+        if !text.isEmpty || !attached.isEmpty {
+            results.insert(ChatMessage(id: id, kind: .user, text: text, imageCount: attached.count, timestamp: timestamp,
+                                       images: attached.isEmpty ? nil : attached), at: 0)
+        }
+        return results
+    }
+
+    // MARK: Images
+
+    private func registerInline(_ block: [String: Any], id: String) -> ChatImage? {
+        guard let source = block["source"] as? [String: Any], source["type"] as? String == "base64",
+              let data = source["data"] as? String else { return nil }
+        let mediaType = source["media_type"] as? String ?? "image/png"
+        images[id] = .inline(mediaType: mediaType, base64: data)
+        let ext = mediaType.split(separator: "/").last.map(String.init) ?? "png"
+        return ChatImage(id: id, name: "image.\(ext == "jpeg" ? "jpg" : ext)")
+    }
+
+    private func registerFile(_ path: String, id: String) -> ChatImage {
+        images[id] = .file((path as NSString).expandingTildeInPath)
+        return ChatImage(id: id, name: (path as NSString).lastPathComponent)
+    }
+
+    /// Returns an image's bytes and MIME type, or nil if it's unknown or the file is gone.
+    func imageData(id: String) -> (data: Data, mediaType: String)? {
+        switch images[id] {
+        case .inline(let mediaType, let base64):
+            return Data(base64Encoded: base64).map { ($0, mediaType) }
+        case .file(let path):
+            let url = URL(fileURLWithPath: path)
+            guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= 25 * 1024 * 1024,
+                  let data = try? Data(contentsOf: url) else { return nil }
+            let ext = url.pathExtension.lowercased()
+            let mediaType = ext == "jpg" ? "image/jpeg" : "image/\(ext)"
+            return (data, mediaType)
+        case nil:
+            return nil
+        }
+    }
+
+    private static func isImagePath(_ path: String) -> Bool {
+        imageExtensions.contains((path as NSString).pathExtension.lowercased())
+    }
+
+    /// Absolute or ~ paths to existing image files mentioned in text.
+    private static func imagePaths(in text: String) -> [String] {
+        let pattern = #"(?:~|/)[^\s`'"()<>\[\]]+\.(?:png|jpe?g|gif|webp|heic)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        var seen = Set<String>()
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let r = Range(match.range, in: text) else { return nil }
+            let path = String(text[r])
+            let expanded = (path as NSString).expandingTildeInPath
+            guard FileManager.default.fileExists(atPath: expanded), seen.insert(expanded).inserted else { return nil }
+            return path
+        }
     }
 
     /// "<command-name>/model</command-name><command-args>opus</command-args>" → "/model opus"

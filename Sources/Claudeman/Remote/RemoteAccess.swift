@@ -219,6 +219,17 @@ final class RemoteAccess: ObservableObject {
             return await self.answer(answer, in: session)
         }
 
+        if request.method == "GET", route.count == 4, route[0] == "sessions", route[2] == "images",
+           let id = UUID(uuidString: route[1]) {
+            guard let session = model.session(id: id) else { return .error("Session not found.", status: 404) }
+            let imageID = route[3]
+            guard imageID.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }),
+                  let image = transcriptReader(for: session)?.imageData(id: imageID) else {
+                return .error("Image not found.", status: 404)
+            }
+            return HTTPResponse(status: 200, body: image.data, contentType: image.mediaType, cacheable: true)
+        }
+
         if request.method == "POST", let id = Self.match(route, "sessions", nil, "attachments") {
             guard model.session(id: id) != nil else { return .error("Session not found.", status: 404) }
             return saveAttachment(request)
