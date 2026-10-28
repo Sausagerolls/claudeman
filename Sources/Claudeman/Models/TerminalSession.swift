@@ -9,6 +9,8 @@ final class TerminalSession: ObservableObject, Identifiable {
     let name: String
     let mode: LaunchMode
     let startedAt = Date()
+    /// Name shown in the Claude app when Remote Control is on; nil when it's off.
+    let remoteControlName: String?
     let terminalView: LocalProcessTerminalView
 
     @Published private(set) var title = ""
@@ -22,6 +24,7 @@ final class TerminalSession: ObservableObject, Identifiable {
         self.projectID = project.id
         self.name = name
         self.mode = mode
+        remoteControlName = UserDefaults.standard.remoteControlEnabled ? "\(project.name) · \(name)" : nil
 
         terminalView = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
         terminalView.processDelegate = self
@@ -35,11 +38,19 @@ final class TerminalSession: ObservableObject, Identifiable {
         // even when the app is launched from Finder. "$@" forwards the mode's flags safely.
         terminalView.startProcess(
             executable: Shell.loginShell,
-            args: Shell.arguments(script: "exec \(command) \"$@\"", mode.arguments),
+            args: Shell.arguments(script: "exec \(command) \"$@\"", arguments),
             environment: Shell.environment().map { "\($0.key)=\($0.value)" },
             currentDirectory: directory
         )
         isRunning = true
+    }
+
+    private var arguments: [String] {
+        var arguments = mode.arguments
+        // Lets the session be continued from the Claude mobile app or claude.ai/code,
+        // with full chat, image attachments and permission prompts.
+        if let remoteControlName { arguments += ["--remote-control", remoteControlName] }
+        return arguments
     }
 
     /// Applies colours, font and input options. Safe to call on a running session.

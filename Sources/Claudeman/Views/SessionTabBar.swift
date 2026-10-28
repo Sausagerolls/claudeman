@@ -32,6 +32,12 @@ private struct SessionTab: View {
             Circle()
                 .fill(session.isRunning ? Color.green : Color.secondary.opacity(0.5))
                 .frame(width: 7, height: 7)
+            if session.remoteControlName != nil {
+                Image(systemName: "iphone.radiowaves.left.and.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Remote Control on: continue this session in the Claude app as “\(session.remoteControlName ?? "")”")
+            }
             Text(label)
                 .lineLimit(1)
                 .frame(maxWidth: 220, alignment: .leading)

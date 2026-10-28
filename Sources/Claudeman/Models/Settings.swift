@@ -17,6 +17,7 @@ enum SettingsKey {
     static let showProjectPaths = "showProjectPaths"
     static let cloneDirectory = "cloneDirectory"
     static let remoteEnabled = "remoteEnabled"
+    static let remoteControl = "claudeRemoteControl"
     static let remotePort = "remotePort"
 }
 
@@ -126,6 +127,7 @@ extension UserDefaults {
     var confirmQuit: Bool { object(forKey: SettingsKey.confirmQuit) as? Bool ?? true }
 
     var remoteEnabled: Bool { bool(forKey: SettingsKey.remoteEnabled) }
+    var remoteControlEnabled: Bool { bool(forKey: SettingsKey.remoteControl) }
 
     var remotePort: UInt16 {
         let value = integer(forKey: SettingsKey.remotePort)
