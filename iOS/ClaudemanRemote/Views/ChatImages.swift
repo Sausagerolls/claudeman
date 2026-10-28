@@ -43,7 +43,7 @@ extension EnvironmentValues {
     }
 }
 
-/// A row of tappable thumbnails; tapping one opens it full screen.
+/// A row of tappable thumbnails; tapping one opens a full-screen viewer you can swipe through.
 struct ChatImageStrip: View {
     let images: [ChatImage]
     var size: CGFloat = 120
@@ -54,8 +54,8 @@ struct ChatImageStrip: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(images) { image in
-                    ChatImageThumbnail(image: image, size: size) { loaded in
-                        viewing = ViewerItem(image: loaded, name: image.name)
+                    ChatImageThumbnail(image: image, size: size) {
+                        viewing = ViewerItem(startID: image.id)
                     }
                 }
             }
@@ -63,14 +63,13 @@ struct ChatImageStrip: View {
         .scrollDisabled(images.count < 3)
         .fixedSize(horizontal: images.count < 3, vertical: true)
         .fullScreenCover(item: $viewing) { item in
-            ImageViewer(image: item.image, name: item.name)
+            ImageViewer(images: images, startID: item.startID)
         }
     }
 
     private struct ViewerItem: Identifiable {
         let id = UUID()
-        let image: UIImage
-        let name: String?
+        let startID: String
     }
 }
 
@@ -78,7 +77,7 @@ private struct ChatImageThumbnail: View {
     @Environment(\.chatImageLoader) private var loader
     let image: ChatImage
     let size: CGFloat
-    let onOpen: (UIImage) -> Void
+    let onOpen: () -> Void
 
     @State private var loaded: UIImage?
     @State private var failed = false
@@ -102,7 +101,7 @@ private struct ChatImageThumbnail: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08)))
         .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onTapGesture { if let loaded { onOpen(loaded) } }
+        .onTapGesture { if loaded != nil { onOpen() } }
         .accessibilityElement()
         .accessibilityLabel(image.name ?? "Image")
         .accessibilityHint(loaded == nil ? "" : "Double-tap to view full screen")
@@ -118,11 +117,69 @@ private struct ChatImageThumbnail: View {
     }
 }
 
-/// Full-screen image with pinch and double-tap zoom, and sharing (save to Photos, AirDrop…).
+/// Full-screen images you can swipe between, with pinch and double-tap zoom on each,
+/// and sharing (save to Photos, AirDrop…) for the one showing.
 struct ImageViewer: View {
     @Environment(\.dismiss) private var dismiss
-    let image: UIImage
-    let name: String?
+    @Environment(\.chatImageLoader) private var loader
+    let images: [ChatImage]
+
+    @State private var selection: String
+    @State private var loaded: [String: UIImage] = [:]
+
+    init(images: [ChatImage], startID: String) {
+        self.images = images
+        _selection = State(initialValue: startID)
+    }
+
+    private var current: (image: UIImage, name: String?)? {
+        guard let image = loaded[selection] else { return nil }
+        return (image, images.first { $0.id == selection }?.name)
+    }
+
+    private var position: Int {
+        (images.firstIndex { $0.id == selection } ?? 0) + 1
+    }
+
+    var body: some View {
+        NavigationStack {
+            TabView(selection: $selection) {
+                ForEach(images) { image in
+                    ZoomableImage(image: loaded[image.id])
+                        .tag(image.id)
+                        .task {
+                            // Thumbnails are cached, so this is usually instant.
+                            if loaded[image.id] == nil, let result = await loader.load(image) {
+                                loaded[image.id] = result
+                            }
+                        }
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .automatic : .never))
+            .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+            .background(Color.black.ignoresSafeArea())
+            .toolbarBackground(.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationTitle(images.count > 1 ? "\(position) of \(images.count)" : "")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if let current {
+                        ShareLink(item: Image(uiImage: current.image),
+                                  preview: SharePreview(current.name ?? "Image", image: Image(uiImage: current.image)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One page of the viewer. Dragging pans only while zoomed in, so swipes still change pages.
+private struct ZoomableImage: View {
+    let image: UIImage?
 
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
@@ -130,51 +187,48 @@ struct ImageViewer: View {
     @State private var lastOffset: CGSize = .zero
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        MagnifyGesture()
-                            .onChanged { value in scale = min(max(lastScale * value.magnification, 1), 6) }
-                            .onEnded { _ in
-                                lastScale = scale
-                                if scale <= 1 { resetZoom() }
-                            }
-                            .simultaneously(with: DragGesture()
-                                .onChanged { value in
-                                    guard scale > 1 else { return }
-                                    offset = CGSize(width: lastOffset.width + value.translation.width,
-                                                    height: lastOffset.height + value.translation.height)
-                                }
-                                .onEnded { _ in lastOffset = offset })
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(.spring(duration: 0.3)) {
-                            if scale > 1 { resetZoom() } else { scale = 2.5; lastScale = 2.5 }
-                        }
+        GeometryReader { geometry in
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(scale)
+                        .offset(offset)
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in scale = min(max(lastScale * value.magnification, 1), 6) }
+                    .onEnded { _ in
+                        lastScale = scale
+                        if scale <= 1 { withAnimation(.spring(duration: 0.25)) { reset() } }
                     }
-            }
-            .background(Color.black.ignoresSafeArea())
-            .toolbarBackground(.black, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    ShareLink(item: Image(uiImage: image), preview: SharePreview(name ?? "Image", image: Image(uiImage: image)))
+            )
+            .simultaneousGesture(scale > 1 ? pan : nil)
+            .onTapGesture(count: 2) {
+                withAnimation(.spring(duration: 0.3)) {
+                    if scale > 1 { reset() } else { scale = 2.5; lastScale = 2.5 }
                 }
             }
+            .onDisappear { reset() }
         }
     }
 
-    private func resetZoom() {
+    private var pan: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                offset = CGSize(width: lastOffset.width + value.translation.width,
+                                height: lastOffset.height + value.translation.height)
+            }
+            .onEnded { _ in lastOffset = offset }
+    }
+
+    private func reset() {
         scale = 1
         lastScale = 1
         offset = .zero
