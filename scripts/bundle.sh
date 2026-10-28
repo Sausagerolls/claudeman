@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 APP="build/Claudeman.app"
-VERSION="${VERSION:-0.2.0}"
+VERSION="${VERSION:-0.3.0}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 BUILD_FLAGS=(-c release)

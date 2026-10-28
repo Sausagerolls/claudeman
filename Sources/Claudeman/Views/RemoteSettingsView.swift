@@ -1,4 +1,5 @@
 import ClaudemanKit
+import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct RemoteSettingsView: View {
@@ -76,24 +77,47 @@ struct RemoteSettingsView: View {
         if let code = remote.pairingCode, let expiry = remote.pairingExpiresAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let remaining = max(0, Int(expiry.timeIntervalSince(context.date)))
-                HStack(alignment: .center, spacing: 16) {
-                    Text(code.prefix(3) + " " + code.suffix(3))
-                        .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                        .textSelection(.enabled)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enter this code in Claudeman Remote.")
+                HStack(alignment: .center, spacing: 20) {
+                    if let qr = QRCode.image(for: pairingLink(code: code).url.absoluteString) {
+                        Image(nsImage: qr)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 168, height: 168)
+                            .padding(8)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Scan with your iPhone or iPad camera, or the Claudeman Remote app.")
+                        Text("Or enter this code:").foregroundStyle(.secondary)
+                        Text(code.prefix(3) + " " + code.suffix(3))
+                            .font(.system(size: 30, weight: .semibold, design: .monospaced))
+                            .textSelection(.enabled)
                         Text(remaining > 0 ? "Expires in \(remaining / 60):\(String(format: "%02d", remaining % 60))" : "Expired")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Button("Cancel") { remote.cancelPairing() }
                     }
-                    Spacer()
-                    Button("Cancel") { remote.cancelPairing() }
                 }
+                .padding(.vertical, 4)
             }
         } else {
             Button("Pair Device…") { remote.beginPairing() }
                 .disabled(!isListening)
         }
+    }
+
+    private func pairingLink(code: String) -> PairingLink {
+        // Local network addresses first, then Tailscale, so the phone tries the fastest path first.
+        let addresses = NetworkAddresses.current()
+            .sorted { isTailscale($0.address) == isTailscale($1.address) ? $0.interface < $1.interface : !isTailscale($0.address) }
+            .map(\.address)
+        return PairingLink(name: remote.serviceName, hosts: addresses, port: UInt16(clamping: port), code: code)
+    }
+
+    private func isTailscale(_ address: String) -> Bool {
+        let parts = address.split(separator: ".")
+        guard parts.count == 4, parts[0] == "100", let second = Int(parts[1]) else { return false }
+        return (64...127).contains(second)
     }
 
     private var isListening: Bool {
@@ -102,9 +126,7 @@ struct RemoteSettingsView: View {
     }
 
     private func label(for entry: (interface: String, address: String)) -> String {
-        if entry.address.hasPrefix("100."), let second = Int(entry.address.split(separator: ".")[1]), (64...127).contains(second) {
-            return "Tailscale"
-        }
+        if isTailscale(entry.address) { return "Tailscale" }
         return entry.interface.hasPrefix("en") ? "Local network (\(entry.interface))" : entry.interface
     }
 
@@ -113,5 +135,19 @@ struct RemoteSettingsView: View {
             return "Paired \(device.pairedAt.formatted(.relative(presentation: .named)))"
         }
         return "Last seen \(date.formatted(.relative(presentation: .named)))"
+    }
+}
+
+enum QRCode {
+    static func image(for text: String) -> NSImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let rep = NSCIImageRep(ciImage: scaled)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
     }
 }

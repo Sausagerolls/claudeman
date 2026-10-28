@@ -28,6 +28,10 @@ targets:
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSLocalNetworkUsageDescription: Claudeman uses the local network to find your Mac and control Claude Code sessions on it.
         NSBonjourServices: [_claudeman._tcp]
+        NSCameraUsageDescription: Claudeman uses the camera to scan the pairing QR code shown on your Mac.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.sausagerolls.claudeman.remote
+            CFBundleURLSchemes: [claudeman]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
