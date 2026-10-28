@@ -14,6 +14,14 @@ struct SessionChatView: View {
     @State private var sessionID: UUID
     @State private var session: RemoteSession?
     @State private var messages: [ChatMessage] = []
+    /// False until the first transcript load; the conversation stays hidden until then so it
+    /// appears already scrolled to the latest message instead of visibly scrolling there.
+    @State private var hasLoaded = false
+    @AppStorage(SettingsKey.showToolSteps) private var showToolSteps = true
+    @AppStorage(SettingsKey.keepAwake) private var keepAwake = false
+    @State private var isRevealed = false
+    /// True while the latest message is on screen; new messages only auto-scroll then.
+    @State private var isNearBottom = true
     @State private var cursor: Int?
     @State private var hasTranscript = true
     @State private var screen: ScreenSnapshot?
@@ -44,12 +52,15 @@ struct SessionChatView: View {
 
     /// Poll faster while something is happening.
     private var refreshInterval: Duration {
-        isWorking || prompt != nil || !outbox.isEmpty ? .milliseconds(900) : .milliseconds(2000)
+        AppSettings.interval(isWorking || prompt != nil || !outbox.isEmpty ? .milliseconds(900) : .milliseconds(2000))
     }
 
     var body: some View {
         conversation
             .environment(\.chatImageLoader, ChatImageLoader(client: client, sessionID: sessionID))
+            .onAppear { UIApplication.shared.isIdleTimerDisabled = keepAwake }
+            .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+            .onChange(of: keepAwake) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .navigationTitle(session?.name ?? "Session")
             .navigationBarTitleDisplayMode(.inline)
@@ -81,7 +92,7 @@ struct SessionChatView: View {
             .onChange(of: prompt?.id) { old, new in
                 if new != nil, old == nil {
                     composerFocused = false
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    Haptics.notify(.warning)
                 }
             }
             .task(id: "\(sessionID)-\(scenePhase)") {
@@ -129,7 +140,7 @@ struct SessionChatView: View {
                     if messages.isEmpty && outbox.isEmpty {
                         emptyState
                     }
-                    ForEach(ChatItem.group(messages)) { item in
+                    ForEach(ChatItem.group(showToolSteps ? messages : messages.filter { $0.kind != .tool })) { item in
                         switch item {
                         case .message(let message): MessageView(message: message)
                         case .tools(let tools): ToolGroupView(tools: tools)
@@ -143,7 +154,12 @@ struct SessionChatView: View {
                         WorkingIndicator(label: activity?.label)
                             .transition(.opacity)
                     }
+                    // End-of-conversation marker. Whether it's on screen decides auto-scrolling and
+                    // the Latest button (content heights are only estimates in a lazy stack).
                     Color.clear.frame(height: 1).id("bottom")
+                        .onScrollVisibilityChange(threshold: 0.1) { visible in
+                            isNearBottom = visible
+                        }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
@@ -152,15 +168,63 @@ struct SessionChatView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.last?.id) { scrollToBottom(proxy) }
-            .onChange(of: outbox.count) { scrollToBottom(proxy) }
-            .onChange(of: isWorking) { scrollToBottom(proxy) }
-            .onChange(of: prompt?.id) { scrollToBottom(proxy) }
+            .opacity(isRevealed ? 1 : 0)
+            .overlay {
+                if !isRevealed { ProgressView() }
+            }
+            .overlay(alignment: .bottom) {
+                if isRevealed && !isNearBottom {
+                    Button {
+                        scrollToBottom(proxy)
+                    } label: {
+                        Label("Latest", systemImage: "arrow.down")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                            .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+                            .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityLabel("Jump to latest message")
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: isNearBottom)
+            .onChange(of: hasLoaded) { _, loaded in
+                guard loaded else { return }
+                // Jump (no animation) while hidden, then show it already at the latest message.
+                Task {
+                    await settleAtBottom(proxy)
+                    isRevealed = true
+                }
+            }
+            .onChange(of: messages.last?.id) { if isRevealed && isNearBottom { scrollToBottom(proxy) } }
+            .onChange(of: outbox.count) { if isRevealed { scrollToBottom(proxy) } }   // you just sent something
+            .onChange(of: isWorking) { if isRevealed && isNearBottom { scrollToBottom(proxy) } }
+            .onChange(of: prompt?.id) { if isRevealed && isNearBottom { scrollToBottom(proxy) } }
         }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+        // A long jump through the lazy list can land short (row heights are estimated
+        // until laid out), so finish the trip once the animation is done.
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            await settleAtBottom(proxy)
+        }
+    }
+
+    /// Repeats the jump until the end of the conversation is really in view.
+    private func settleAtBottom(_ proxy: ScrollViewProxy) async {
+        for _ in 0..<15 {
+            proxy.scrollTo("bottom", anchor: .bottom)
+            try? await Task.sleep(for: .milliseconds(40))
+            if isNearBottom { break }
+        }
+        proxy.scrollTo("bottom", anchor: .bottom)
     }
 
     private var emptyState: some View {
@@ -317,7 +381,12 @@ struct SessionChatView: View {
         guard let client else { return }
         do {
             let response = try await client.chat(sessionID: sessionID, after: cursor)
-            if response.reset {
+            if !hasLoaded {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { messages = response.messages }
+                hasLoaded = true
+            } else if response.reset {
                 messages = response.messages
             } else if !response.messages.isEmpty {
                 messages += response.messages
@@ -352,7 +421,7 @@ struct SessionChatView: View {
         withAnimation { outbox.append(outgoing) }
         draft = ""
         photos = []
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.tap(.light)
 
         Task {
             do {
@@ -374,7 +443,7 @@ struct SessionChatView: View {
 
     private func answer(_ option: PendingPrompt.Option, text: String?, in prompt: PendingPrompt) async {
         guard let client else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Haptics.tap(.medium)
         do {
             try await client.answer(sessionID: sessionID, AnswerRequest(promptID: prompt.id, optionIndex: option.index, text: text))
             try? await Task.sleep(for: .milliseconds(250))
@@ -388,7 +457,7 @@ struct SessionChatView: View {
 
     private func press(_ key: TerminalKey) {
         guard let client else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.tap(.light)
         Task {
             try? await client.input(sessionID: sessionID, InputRequest(keys: [key]))
             try? await Task.sleep(for: .milliseconds(250))
@@ -404,6 +473,8 @@ struct SessionChatView: View {
             sessionID = response.session.id
             session = response.session
             messages = []
+            hasLoaded = false
+            isRevealed = false
             outbox = []
             cursor = nil
             screen = nil
@@ -964,7 +1035,8 @@ struct PickedPhoto: Identifiable {
 
     /// Downscales to at most 2048 px on the long side, which is plenty for Claude, and encodes JPEG.
     init?(image: UIImage) {
-        let maxSide: CGFloat = 2048
+        let setting = AppSettings.photoSize
+        let maxSide = setting.maxSide
         let scale = min(1, maxSide / max(image.size.width, image.size.height))
         let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let format = UIGraphicsImageRendererFormat()
@@ -972,7 +1044,7 @@ struct PickedPhoto: Identifiable {
         let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
-        guard let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
+        guard let jpeg = resized.jpegData(compressionQuality: setting.jpegQuality) else { return nil }
         self.jpeg = jpeg
         thumbnail = resized.preparingThumbnail(of: CGSize(width: 200, height: 200)) ?? resized
     }

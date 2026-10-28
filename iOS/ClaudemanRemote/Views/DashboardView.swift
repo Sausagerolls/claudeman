@@ -113,7 +113,7 @@ struct DashboardView: View {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(for: Self.refreshInterval)
+                try? await Task.sleep(for: AppSettings.interval(Self.refreshInterval))
             }
         }
         .confirmationDialog(
@@ -145,7 +145,11 @@ struct DashboardView: View {
         case .restart(let mode):
             perform(session.id) { try await $0.restart(sessionID: session.id, mode: mode) }
         case .stop:
-            sessionToStop = session
+            if AppSettings.confirmStop {
+                sessionToStop = session
+            } else {
+                perform(session.id) { try await $0.stop(sessionID: session.id) }
+            }
         case .close:
             perform(session.id) { try await $0.close(sessionID: session.id) }
         }
@@ -174,11 +178,11 @@ struct DashboardView: View {
             defer { busy.remove(id) }
             do {
                 try await operation(client)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                Haptics.notify(.success)
                 await refresh()
             } catch {
                 actionError = error.localizedDescription
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                Haptics.notify(.error)
             }
         }
     }
@@ -204,6 +208,8 @@ private struct ProjectHeader: View {
                     Label("Start", systemImage: "plus.circle.fill")
                         .labelStyle(.iconOnly)
                         .font(.title3)
+                } primaryAction: {
+                    onStart(AppSettings.defaultLaunchMode)
                 }
                 .disabled(!project.folderExists)
                 .textCase(nil)

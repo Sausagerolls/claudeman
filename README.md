@@ -51,7 +51,7 @@ swift scripts/make-icon.swift
 
 ## Claudeman Remote (iPhone and iPad)
 
-The companion app lives in `iOS/`. It's a SwiftUI app for iOS 17 and later.
+The companion app lives in `iOS/`. It's a SwiftUI app for iOS 18 and later.
 
 ### Set up
 

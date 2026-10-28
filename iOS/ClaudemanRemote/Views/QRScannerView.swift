@@ -24,7 +24,7 @@ struct QRScannerView: View {
                 .foregroundStyle(.white)
             } else {
                 CameraPreview { value in
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    Haptics.notify(.success)
                     onScan(value)
                     dismiss()
                 }

@@ -5,6 +5,7 @@ struct RootView: View {
     @EnvironmentObject private var store: MacStore
     @State private var selection: PairedMac.ID?
     @State private var isAdding = false
+    @State private var showSettings = false
     @State private var scannedLink: PairingLink?
 
     var body: some View {
@@ -33,6 +34,12 @@ struct RootView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button { isAdding = true } label: { Label("Add Mac", systemImage: "plus") }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .overlay {
                 if store.macs.isEmpty {

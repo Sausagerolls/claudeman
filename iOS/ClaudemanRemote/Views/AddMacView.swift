@@ -263,13 +263,13 @@ struct PairView: View {
             var paired = mac
             paired.name = response.server.name
             store.add(paired, token: response.token)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.notify(.success)
             onPaired(paired)
         } catch {
             pairError = error.localizedDescription
             code = ""
             codeFocused = true
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            Haptics.notify(.error)
         }
     }
 }
