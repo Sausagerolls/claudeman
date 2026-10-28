@@ -5,6 +5,7 @@ import Network
 struct HTTPRequest {
     let method: String
     let path: String
+    let query: [String: String]
     let headers: [String: String]   // lower-cased names
     let body: Data
 
@@ -60,6 +61,7 @@ final class HTTPServer: @unchecked Sendable {
 
     private static let maxHeaderBytes = 16 * 1024
     private static let maxBodyBytes = 64 * 1024
+    private static let maxUploadBytes = RemoteAPI.maxAttachmentBytes
 
     private let queue = DispatchQueue(label: "claudeman.remote.server")
     private var listener: NWListener?
@@ -113,8 +115,8 @@ final class HTTPServer: @unchecked Sendable {
     private func accept(_ connection: NWConnection) {
         connection.start(queue: queue)
         receive(on: connection, buffer: Data())
-        // Drop connections that never send a full request.
-        queue.asyncAfter(deadline: .now() + 15) { [weak connection] in
+        // Drop connections that never send a full request (generous enough for photo uploads).
+        queue.asyncAfter(deadline: .now() + 90) { [weak connection] in
             if let connection, connection.state != .cancelled { connection.cancel() }
         }
     }
@@ -180,17 +182,26 @@ final class HTTPServer: @unchecked Sendable {
             headers[name] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
 
+        let rawPath = String(requestLine[1])
+        let pathAndQuery = rawPath.split(separator: "?", maxSplits: 1).map(String.init)
+        let path = pathAndQuery.first ?? rawPath
+
         let length = Int(headers["content-length"] ?? "0") ?? -1
         guard length >= 0 else { return .invalid }
-        guard length <= maxBodyBytes else { return .tooLarge }
+        guard length <= (path.hasSuffix("/attachments") ? maxUploadBytes : maxBodyBytes) else { return .tooLarge }
         let bodyStart = headerEnd.upperBound
         guard buffer.count - bodyStart >= length else { return .incomplete }
 
-        let rawPath = String(requestLine[1])
-        let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
+        var query: [String: String] = [:]
+        if pathAndQuery.count == 2 {
+            for item in URLComponents(string: "?" + pathAndQuery[1])?.queryItems ?? [] {
+                query[item.name] = item.value ?? ""
+            }
+        }
         return .complete(HTTPRequest(
             method: String(requestLine[0]).uppercased(),
             path: path,
+            query: query,
             headers: headers,
             body: buffer.subdata(in: bodyStart..<(bodyStart + length))
         ))

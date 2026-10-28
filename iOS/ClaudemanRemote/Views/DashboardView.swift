@@ -14,6 +14,10 @@ struct DashboardView: View {
     @State private var actionError: String?
     @State private var sessionToStop: RemoteSession?
     @State private var confirmRemove = false
+    #if DEBUG
+    /// Development aid: launch with `-openFirstSession` to jump straight into a running session.
+    @State private var debugSession: RemoteSession?
+    #endif
 
     private static let refreshInterval: Duration = .seconds(3)
 
@@ -56,8 +60,10 @@ struct DashboardView: View {
                         Text("No sessions").foregroundStyle(.secondary)
                     }
                     ForEach(project.sessions) { session in
-                        SessionRow(session: session, isBusy: busy.contains(session.id)) { action in
-                            handle(action, session: session)
+                        NavigationLink(value: session) {
+                            SessionRow(session: session, isBusy: busy.contains(session.id)) { action in
+                                handle(action, session: session)
+                            }
                         }
                     }
                 } header: {
@@ -79,6 +85,18 @@ struct DashboardView: View {
             }
         }
         .navigationTitle(mac.name)
+        .navigationDestination(for: RemoteSession.self) { session in
+            SessionChatView(mac: mac, session: session)
+        }
+        #if DEBUG
+        .navigationDestination(item: $debugSession) { session in
+            SessionChatView(mac: mac, session: session)
+        }
+        .onChange(of: status?.projects.count) {
+            guard ProcessInfo.processInfo.arguments.contains("-openFirstSession"), debugSession == nil else { return }
+            debugSession = status?.projects.flatMap(\.sessions).first(where: \.isRunning)
+        }
+        #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {

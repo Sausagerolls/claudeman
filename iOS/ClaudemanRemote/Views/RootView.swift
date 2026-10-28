@@ -48,8 +48,10 @@ struct RootView: View {
             }
         } detail: {
             if let mac = store.macs.first(where: { $0.id == selection }) {
-                DashboardView(mac: mac)
-                    .id(mac.id)
+                NavigationStack {
+                    DashboardView(mac: mac)
+                }
+                .id(mac.id)
             } else {
                 ContentUnavailableView("Select a Mac", systemImage: "laptopcomputer")
             }

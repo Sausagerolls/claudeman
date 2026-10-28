@@ -58,18 +58,45 @@ struct RemoteClient: Sendable {
         let _: [String: Bool] = try await send("DELETE", RemoteAPI.Path.session(sessionID))
     }
 
+    func chat(sessionID: UUID, after cursor: Int?) async throws -> ChatResponse {
+        var path = RemoteAPI.Path.chat(sessionID)
+        if let cursor { path += "?after=\(cursor)" }
+        return try await send("GET", path)
+    }
+
+    func input(sessionID: UUID, _ input: InputRequest) async throws {
+        let _: [String: Bool] = try await send("POST", RemoteAPI.Path.input(sessionID), body: input)
+    }
+
+    /// Uploads a JPEG and returns its attachment id.
+    func uploadImage(sessionID: UUID, jpeg: Data) async throws -> String {
+        let response: AttachmentResponse = try await send(
+            "POST", RemoteAPI.Path.attachments(sessionID),
+            rawBody: jpeg, contentType: "image/jpeg", timeout: 90
+        )
+        return response.id
+    }
+
     private func send<Response: Decodable>(_ method: String, _ path: String) async throws -> Response {
         try await send(method, path, body: Optional<ErrorResponse>.none)
     }
 
     private func send<Body: Encodable, Response: Decodable>(_ method: String, _ path: String, body: Body?) async throws -> Response {
+        let data = try body.map { try RemoteAPI.makeEncoder().encode($0) }
+        return try await send(method, path, rawBody: data, contentType: data == nil ? nil : "application/json")
+    }
+
+    private func send<Response: Decodable>(
+        _ method: String, _ path: String, rawBody: Data?, contentType: String?, timeout: TimeInterval? = nil
+    ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw RemoteError.badAddress }
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let timeout { request.timeoutInterval = timeout }
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try RemoteAPI.makeEncoder().encode(body)
+        if let rawBody {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            request.httpBody = rawBody
         }
 
         let (data, response) = try await Self.session.data(for: request)

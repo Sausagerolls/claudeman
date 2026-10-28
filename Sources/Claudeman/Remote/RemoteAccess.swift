@@ -27,6 +27,9 @@ final class RemoteAccess: ObservableObject {
     @Published private(set) var pairingCode: String?
     @Published private(set) var pairingExpiresAt: Date?
 
+    private var transcripts: [UUID: TranscriptReader] = [:]
+    /// Uploaded photos by attachment id → file path.
+    private var attachments: [String: String] = [:]
     private var failedPairingAttempts = 0
     private var runningPort: UInt16?
     private let devicesKey = "remoteDevices"
@@ -198,6 +201,23 @@ final class RemoteAccess: ObservableObject {
             return .json(SessionResponse(session: session.remote))
         }
 
+        if request.method == "GET", let id = Self.match(route, "sessions", nil, "chat") {
+            guard let session = model.session(id: id) else { return .error("Session not found.", status: 404) }
+            return .json(chat(for: session, after: request.query["after"].flatMap(Int.init)))
+        }
+
+        if request.method == "POST", let id = Self.match(route, "sessions", nil, "input") {
+            guard let session = model.session(id: id) else { return .error("Session not found.", status: 404) }
+            guard session.isRunning else { return .error("This session has ended. Continue it first.", status: 409) }
+            guard let input = decode(InputRequest.self, request) else { return .error("Invalid body.", status: 400) }
+            return await type(input, into: session)
+        }
+
+        if request.method == "POST", let id = Self.match(route, "sessions", nil, "attachments") {
+            guard model.session(id: id) != nil else { return .error("Session not found.", status: 404) }
+            return saveAttachment(request)
+        }
+
         if request.method == "DELETE", let id = Self.match(route, "sessions", nil) {
             guard let session = model.session(id: id) else { return .error("Session not found.", status: 404) }
             model.close(session)
@@ -220,6 +240,121 @@ final class RemoteAccess: ObservableObject {
             }
         }
         return captured
+    }
+
+    // MARK: Chat
+
+    private func chat(for session: TerminalSession, after cursor: Int?) -> ChatResponse {
+        let reader = transcriptReader(for: session)
+        reader?.refresh()
+        let messages = reader?.messages ?? []
+        let generation = reader?.generation ?? 0
+
+        // The cursor packs the reader generation with the message count, so a rewritten
+        // transcript makes the client start over instead of skipping messages.
+        var slice: [ChatMessage]
+        var reset = true
+        if let cursor, cursor >> 32 == generation, Int(cursor & 0xFFFF_FFFF) <= messages.count {
+            slice = Array(messages[Int(cursor & 0xFFFF_FFFF)...])
+            reset = false
+        } else {
+            slice = Array(messages.suffix(300))
+        }
+
+        return ChatResponse(
+            session: session.remote,
+            messages: slice,
+            cursor: generation << 32 | messages.count,
+            reset: reset,
+            hasTranscript: reader != nil,
+            screen: session.screen()
+        )
+    }
+
+    private func transcriptReader(for session: TerminalSession) -> TranscriptReader? {
+        let live = Set(AppModel.shared.sessions.map(\.id))
+        transcripts = transcripts.filter { live.contains($0.key) }
+        if let reader = transcripts[session.id] { return reader }
+
+        if session.claudeSessionID == nil {
+            session.claudeSessionID = discoverTranscript(for: session)
+        }
+        guard let sessionID = session.claudeSessionID else { return nil }
+        let url = TranscriptReader.transcriptURL(projectPath: session.projectPath, sessionID: sessionID)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let reader = TranscriptReader(url: url)
+        transcripts[session.id] = reader
+        return reader
+    }
+
+    /// For continued or resumed sessions we don't know Claude's session id up front:
+    /// pick the newest transcript in the project that no other open session has claimed.
+    private func discoverTranscript(for session: TerminalSession) -> String? {
+        let claimed = Set(AppModel.shared.sessions.filter { $0.id != session.id }.compactMap(\.claudeSessionID))
+        let candidates = TranscriptReader.transcripts(projectPath: session.projectPath).filter { !claimed.contains($0.id) }
+        switch session.mode {
+        case .new:
+            return nil
+        case .continueLast:
+            return candidates.first?.id
+        case .resume:
+            // Wait until the picked conversation is written to after the session started.
+            return candidates.first { $0.modified >= session.startedAt.addingTimeInterval(-2) }?.id
+        }
+    }
+
+    private func type(_ input: InputRequest, into session: TerminalSession) async -> HTTPResponse {
+        var paths: [String] = []
+        for id in input.attachments ?? [] {
+            guard let path = attachments[id] else { return .error("Attachment expired. Attach the photo again.", status: 400) }
+            paths.append(path)
+        }
+        await session.send(text: input.text ?? "", imagePaths: paths, submit: input.submit)
+        for key in input.keys ?? [] {
+            session.press(key)
+            try? await Task.sleep(for: .milliseconds(40))
+        }
+        return .json(["ok": true])
+    }
+
+    /// Saves an uploaded photo where Claude Code can read it. The folder path has no spaces,
+    /// so the pasted path is recognised as an image and attached.
+    private func saveAttachment(_ request: HTTPRequest) -> HTTPResponse {
+        let type = request.headers["content-type"]?.lowercased() ?? ""
+        let ext: String
+        switch type {
+        case let t where t.hasPrefix("image/jpeg"): ext = "jpg"
+        case let t where t.hasPrefix("image/png"): ext = "png"
+        case let t where t.hasPrefix("image/gif"): ext = "gif"
+        case let t where t.hasPrefix("image/webp"): ext = "webp"
+        default: return .error("Only JPEG, PNG, GIF and WebP images can be attached.", status: 400)
+        }
+        guard !request.body.isEmpty else { return .error("Empty upload.", status: 400) }
+
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Claudeman/Attachments", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        pruneAttachments(in: directory)
+
+        let id = UUID().uuidString.lowercased()
+        let url = directory.appendingPathComponent("\(id).\(ext)")
+        do {
+            try request.body.write(to: url, options: .atomic)
+        } catch {
+            return .error("Couldn't save the photo: \(error.localizedDescription)", status: 500)
+        }
+        attachments[id] = url.path
+        return .json(AttachmentResponse(id: id), status: 201)
+    }
+
+    /// Deletes uploads older than a week.
+    private func pruneAttachments(in directory: URL) {
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        for file in files {
+            let created = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantFuture
+            if created < cutoff { try? FileManager.default.removeItem(at: file) }
+        }
     }
 
     private func status() -> StatusResponse {

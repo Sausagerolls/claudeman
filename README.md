@@ -67,8 +67,10 @@ To control the Mac when you're away from home, install [Tailscale](https://tails
 - See every project and its sessions: running or ended, plus the task title Claude sets.
 - Start a new session, or continue the last conversation, in any project.
 - Restart a session (new or continue), stop a running one, or close an ended tab.
+- **Chat in a session**: tap it to see the conversation, send messages, and attach photos from the camera or photo library. Photos are uploaded to the Mac and attached the same way as dragging an image into Claude Code.
+- **Answer prompts**: a live strip shows the bottom of the Mac's terminal, and a key bar sends 1/2/3, Enter, Esc, arrows, Shift+Tab and Ctrl+C. Tap the strip to see the whole screen.
 
-It can't show a session's screen or type into it. Use the Mac for that.
+The conversation comes from the transcript Claude Code saves in `~/.claude/projects/`. Its format is internal to Claude Code, so a future Claude Code update could hide some messages until Claudeman is updated. The terminal strip always works.
 
 ### Security
 
