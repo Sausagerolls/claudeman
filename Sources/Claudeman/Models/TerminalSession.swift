@@ -91,7 +91,9 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// The visible screen as plain text, one string per row.
     func screen() -> ScreenSnapshot {
         let lines = (0..<mirror.rows).map { row in
-            mirror.getLine(row: row)?.translateToString(trimRight: true) ?? ""
+            // Cells skipped with cursor movement hold NUL; a terminal draws them as spaces.
+            (mirror.getLine(row: row)?.translateToString(trimRight: true) ?? "")
+                .replacingOccurrences(of: "\u{0}", with: " ")
         }
         return ScreenSnapshot(lines: lines, cols: mirror.cols, rows: mirror.rows)
     }

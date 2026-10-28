@@ -68,21 +68,32 @@ public struct ChatResponse: Codable, Sendable {
     /// False until the session's transcript file has been found (shortly after Claude starts).
     public var hasTranscript: Bool
     public var screen: ScreenSnapshot
+    /// A question or permission request waiting for an answer, if any.
+    public var prompt: PendingPrompt?
+    public var activity: SessionActivity?
 
-    public init(session: RemoteSession, messages: [ChatMessage], cursor: Int, reset: Bool, hasTranscript: Bool, screen: ScreenSnapshot) {
+    public init(session: RemoteSession, messages: [ChatMessage], cursor: Int, reset: Bool, hasTranscript: Bool,
+                screen: ScreenSnapshot, prompt: PendingPrompt? = nil, activity: SessionActivity? = nil) {
         self.session = session
         self.messages = messages
         self.cursor = cursor
         self.reset = reset
         self.hasTranscript = hasTranscript
         self.screen = screen
+        self.prompt = prompt
+        self.activity = activity
     }
 }
 
 /// Special keys the phone can press, for answering prompts and navigating menus.
 public enum TerminalKey: String, Codable, CaseIterable, Sendable {
     case enter, escape, tab, shiftTab, up, down, left, right, backspace, ctrlC
-    case digit1, digit2, digit3
+    case digit1, digit2, digit3, digit4, digit5, digit6, digit7, digit8, digit9
+
+    public static func digit(_ number: Int) -> TerminalKey? {
+        guard (1...9).contains(number) else { return nil }
+        return [.digit1, .digit2, .digit3, .digit4, .digit5, .digit6, .digit7, .digit8, .digit9][number - 1]
+    }
 
     public var bytes: [UInt8] {
         switch self {
@@ -96,9 +107,8 @@ public enum TerminalKey: String, Codable, CaseIterable, Sendable {
         case .left: Array("\u{1B}[D".utf8)
         case .backspace: [0x7F]
         case .ctrlC: [0x03]
-        case .digit1: Array("1".utf8)
-        case .digit2: Array("2".utf8)
-        case .digit3: Array("3".utf8)
+        case .digit1, .digit2, .digit3, .digit4, .digit5, .digit6, .digit7, .digit8, .digit9:
+            Array(rawValue.suffix(1).utf8)
         }
     }
 }
@@ -117,6 +127,13 @@ public struct InputRequest: Codable, Sendable {
         self.attachments = attachments
         self.keys = keys
         self.submit = submit
+    }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        attachments = try container.decodeIfPresent([String].self, forKey: .attachments)
+        keys = try container.decodeIfPresent([TerminalKey].self, forKey: .keys)
+        submit = try container.decodeIfPresent(Bool.self, forKey: .submit) ?? false
     }
 }
 

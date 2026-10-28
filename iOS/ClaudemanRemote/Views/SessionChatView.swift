@@ -2,9 +2,10 @@ import ClaudemanKit
 import PhotosUI
 import SwiftUI
 
-/// Chat with one Claude Code session: the conversation, a live view of the terminal's
-/// last lines (for prompts and progress), keys for answering prompts, and a composer
-/// with photo attachments.
+/// Chat with one Claude Code session.
+///
+/// Claude's questions and permission requests are recognised on the Mac and shown here as
+/// native cards, so you never need to see the terminal.
 struct SessionChatView: View {
     @EnvironmentObject private var store: MacStore
     @Environment(\.scenePhase) private var scenePhase
@@ -16,19 +17,20 @@ struct SessionChatView: View {
     @State private var cursor: Int?
     @State private var hasTranscript = true
     @State private var screen: ScreenSnapshot?
+    @State private var prompt: PendingPrompt?
+    @State private var activity: SessionActivity?
     @State private var connectionError: String?
     @State private var actionError: String?
-    @State private var showFullScreen = false
-    @AppStorage("showTerminalPanel") private var showTerminal = true
+    @State private var showTerminal = false
 
+    /// Messages sent from this device that haven't appeared in the transcript yet.
+    @State private var outbox: [OutgoingMessage] = []
     @State private var draft = ""
     @State private var photos: [PickedPhoto] = []
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showCamera = false
-    @State private var isSending = false
+    @State private var showPhotoPicker = false
     @FocusState private var composerFocused: Bool
-
-    private static let refreshInterval: Duration = .milliseconds(1500)
 
     init(mac: PairedMac, session: RemoteSession) {
         self.mac = mac
@@ -38,59 +40,82 @@ struct SessionChatView: View {
 
     private var client: RemoteClient? { store.client(for: mac) }
     private var isRunning: Bool { session?.isRunning ?? false }
+    private var isWorking: Bool { activity?.isWorking ?? false }
+
+    /// Poll faster while something is happening.
+    private var refreshInterval: Duration {
+        isWorking || prompt != nil || !outbox.isEmpty ? .milliseconds(900) : .milliseconds(2000)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            conversation
-            if let connectionError {
-                Label(connectionError, systemImage: "wifi.exclamationmark")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-            }
-            if isRunning {
-                if showTerminal, let screen { TerminalPanel(screen: screen) { showFullScreen = true } }
-                KeyBar { press($0) }
-                composer
-            } else if session != nil {
-                endedBar
-            }
-        }
-        .navigationTitle(session?.name ?? "Session")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Toggle("Show Terminal", systemImage: "terminal", isOn: $showTerminal)
-                    Button("Full Terminal Screen", systemImage: "arrow.up.left.and.arrow.down.right") { showFullScreen = true }
-                        .disabled(screen == nil)
-                } label: {
-                    Label("Options", systemImage: "ellipsis.circle")
+        conversation
+            .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+            .navigationTitle(session?.name ?? "Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { titleView }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("View Terminal", systemImage: "terminal") { showTerminal = true }
+                            .disabled(screen == nil)
+                        if isRunning {
+                            Button("Interrupt Claude", systemImage: "stop.circle") { press(.escape) }
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showFullScreen) {
-            if let screen { FullScreenTerminal(screen: screen) }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { image in add(image) }
-                .ignoresSafeArea()
-        }
-        .onChange(of: pickerItems) { _, items in
-            Task { await loadPicked(items) }
-        }
-        .task(id: "\(sessionID)-\(scenePhase)") {
-            guard scenePhase == .active else { return }
-            while !Task.isCancelled {
-                await refresh()
-                try? await Task.sleep(for: Self.refreshInterval)
+            .sheet(isPresented: $showTerminal) {
+                if let screen { TerminalSheet(screen: screen) }
             }
-        }
-        .alert("Couldn't Send", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(actionError ?? "")
+            .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems, maxSelectionCount: 5, matching: .images)
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPicker { image in add(image) }
+                    .ignoresSafeArea()
+            }
+            .onChange(of: pickerItems) { _, items in
+                Task { await loadPicked(items) }
+            }
+            .onChange(of: prompt?.id) { old, new in
+                if new != nil, old == nil {
+                    composerFocused = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                }
+            }
+            .task(id: "\(sessionID)-\(scenePhase)") {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await refresh()
+                    try? await Task.sleep(for: refreshInterval)
+                }
+            }
+            .alert("Something Went Wrong", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(actionError ?? "")
+            }
+    }
+
+    private var titleView: some View {
+        VStack(spacing: 0) {
+            Text(session?.name ?? "Session").font(.headline)
+            Group {
+                if let connectionError {
+                    Text(connectionError).foregroundStyle(.orange)
+                } else if prompt != nil {
+                    Text("Waiting for your answer").foregroundStyle(.orange)
+                } else if isWorking {
+                    Text(activity?.label ?? "Working…")
+                } else if !isRunning, session != nil {
+                    Text("Ended")
+                } else if let title = session?.title, !title.isEmpty {
+                    Text(title)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
     }
 
@@ -99,54 +124,92 @@ struct SessionChatView: View {
     private var conversation: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    if messages.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.largeTitle)
-                                .foregroundStyle(.secondary)
-                            Text(hasTranscript ? "No messages yet." : "Waiting for Claude Code to start…")
-                                .foregroundStyle(.secondary)
-                            Text("Send a message below. Use the terminal panel and keys to answer prompts.")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 60)
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if messages.isEmpty && outbox.isEmpty {
+                        emptyState
                     }
-                    ForEach(messages) { message in
-                        MessageView(message: message)
-                            .id(message.id)
+                    ForEach(ChatItem.group(messages)) { item in
+                        switch item {
+                        case .message(let message): MessageView(message: message)
+                        case .tools(let tools): ToolGroupView(tools: tools)
+                        }
+                    }
+                    ForEach(outbox) { message in
+                        UserBubble(text: message.text, thumbnails: message.thumbnails, imageCount: message.thumbnails.count, isPending: true)
+                    }
+                    if isWorking && prompt == nil {
+                        WorkingIndicator(label: activity?.label)
+                            .transition(.opacity)
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+                .animation(.easeOut(duration: 0.2), value: messages.count)
+                .animation(.easeOut(duration: 0.2), value: isWorking)
             }
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.last?.id) {
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
-            }
+            .onChange(of: messages.last?.id) { scrollToBottom(proxy) }
+            .onChange(of: outbox.count) { scrollToBottom(proxy) }
+            .onChange(of: isWorking) { scrollToBottom(proxy) }
+            .onChange(of: prompt?.id) { scrollToBottom(proxy) }
         }
     }
 
-    // MARK: Composer
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.accentColor)
+            Text(hasTranscript || !isRunning ? "Start the conversation" : "Starting Claude Code…")
+                .font(.headline)
+            Text("Send a message or a photo. If Claude asks a question, it appears here for you to answer.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 80)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: Bottom bar
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        if !isRunning, session != nil {
+            endedBar
+        } else if let prompt {
+            PromptCard(prompt: prompt) { option, text in
+                await answer(option, text: text, in: prompt)
+            } onDismiss: {
+                press(.escape)
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else {
+            composer
+        }
+    }
 
     private var composer: some View {
         VStack(spacing: 8) {
             if !photos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
+                    HStack(spacing: 8) {
                         ForEach(photos) { photo in
                             Image(uiImage: photo.thumbnail)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 64, height: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .overlay(alignment: .topTrailing) {
                                     Button {
-                                        photos.removeAll { $0.id == photo.id }
+                                        withAnimation { photos.removeAll { $0.id == photo.id } }
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
                                             .symbolRenderingMode(.palette)
@@ -157,68 +220,91 @@ struct SessionChatView: View {
                                 }
                         }
                     }
+                    .padding(.horizontal)
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 10) {
                 Menu {
                     Button("Take Photo", systemImage: "camera") { showCamera = true }
                         .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 5, matching: .images) {
-                        Label("Photo Library", systemImage: "photo.on.rectangle")
-                    }
+                    Button("Photo Library", systemImage: "photo.on.rectangle") { showPhotoPicker = true }
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Color(.secondarySystemFill), in: Circle())
                 }
-                .accessibilityLabel("Attach")
+                .accessibilityLabel("Attach photo")
 
-                TextField("Message Claude", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused($composerFocused)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-
-                Button {
-                    Task { await sendMessage() }
-                } label: {
-                    if isSending {
-                        ProgressView().frame(width: 32, height: 32)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
-                    }
+                HStack(alignment: .bottom) {
+                    TextField("Message", text: $draft, axis: .vertical)
+                        .lineLimit(1...6)
+                        .focused($composerFocused)
+                        .padding(.vertical, 8)
+                        .padding(.leading, 14)
+                    sendOrStopButton
+                        .padding(3)
                 }
-                .disabled(isSending || (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && photos.isEmpty))
-                .accessibilityLabel("Send")
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
             }
+            .padding(.horizontal)
         }
-        .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
     }
 
+    private var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !photos.isEmpty
+    }
+
+    @ViewBuilder
+    private var sendOrStopButton: some View {
+        if isWorking && !canSend {
+            Button { press(.escape) } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(.systemBackground))
+                    .frame(width: 30, height: 30)
+                    .background(Color.primary, in: Circle())
+            }
+            .accessibilityLabel("Stop Claude")
+        } else {
+            Button { send() } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(canSend ? Color.accentColor : Color(.systemGray3), in: Circle())
+            }
+            .disabled(!canSend)
+            .accessibilityLabel("Send")
+        }
+    }
+
     private var endedBar: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Text(session?.exitCode == 143 || session?.exitCode == 129 ? "This session was stopped." : "This session has ended.")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-            HStack {
+            HStack(spacing: 12) {
                 Button {
                     Task { await restart(.continueLast) }
                 } label: {
                     Label("Continue", systemImage: "arrow.uturn.forward")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 Button {
                     Task { await restart(.new) }
                 } label: {
                     Label("New Session", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
+            .controlSize(.large)
         }
-        .frame(maxWidth: .infinity)
         .padding()
         .background(.bar)
     }
@@ -234,37 +320,65 @@ struct SessionChatView: View {
             } else if !response.messages.isEmpty {
                 messages += response.messages
             }
+            // Drop optimistic messages once the transcript has caught up with them.
+            let newUserMessages = response.messages.filter { $0.kind == .user }.count
+            if newUserMessages > 0 { outbox.removeFirst(min(newUserMessages, outbox.count)) }
+
             cursor = response.cursor
             session = response.session
             hasTranscript = response.hasTranscript
             screen = response.screen
+            withAnimation(.spring(duration: 0.3)) { prompt = response.prompt }
+            activity = response.activity
             connectionError = nil
         } catch is CancellationError {
         } catch let error as URLError where error.code == .cancelled {
         } catch RemoteError.server(_, status: 404) {
-            connectionError = "This session was closed on the Mac."
+            connectionError = "Closed on the Mac"
             session?.isRunning = false
         } catch {
-            connectionError = error.localizedDescription
+            connectionError = "Reconnecting…"
         }
     }
 
-    private func sendMessage() async {
-        guard let client else { return }
+    private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attached = photos
-        isSending = true
-        defer { isSending = false }
-        do {
-            var ids: [String] = []
-            for photo in attached {
-                ids.append(try await client.uploadImage(sessionID: sessionID, jpeg: photo.jpeg))
+        guard let client, !text.isEmpty || !attached.isEmpty else { return }
+
+        let outgoing = OutgoingMessage(text: text, thumbnails: attached.map(\.thumbnail))
+        withAnimation { outbox.append(outgoing) }
+        draft = ""
+        photos = []
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        Task {
+            do {
+                var ids: [String] = []
+                for photo in attached {
+                    ids.append(try await client.uploadImage(sessionID: sessionID, jpeg: photo.jpeg))
+                }
+                try await client.input(sessionID: sessionID, InputRequest(text: text, attachments: ids, submit: true))
+                await refresh()
+            } catch {
+                // Put the message back so nothing is lost.
+                outbox.removeAll { $0.id == outgoing.id }
+                draft = text
+                photos = attached
+                actionError = error.localizedDescription
             }
-            try await client.input(sessionID: sessionID, InputRequest(text: text, attachments: ids, submit: true))
-            draft = ""
-            photos.removeAll { photo in attached.contains { $0.id == photo.id } }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+
+    private func answer(_ option: PendingPrompt.Option, text: String?, in prompt: PendingPrompt) async {
+        guard let client else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        do {
+            try await client.answer(sessionID: sessionID, AnswerRequest(promptID: prompt.id, optionIndex: option.index, text: text))
+            try? await Task.sleep(for: .milliseconds(250))
             await refresh()
+        } catch RemoteError.server(_, status: 409) {
+            await refresh()   // the question moved on; show the current one
         } catch {
             actionError = error.localizedDescription
         }
@@ -274,13 +388,9 @@ struct SessionChatView: View {
         guard let client else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         Task {
-            do {
-                try await client.input(sessionID: sessionID, InputRequest(keys: [key]))
-                try? await Task.sleep(for: .milliseconds(250))
-                await refresh()
-            } catch {
-                actionError = error.localizedDescription
-            }
+            try? await client.input(sessionID: sessionID, InputRequest(keys: [key]))
+            try? await Task.sleep(for: .milliseconds(250))
+            await refresh()
         }
     }
 
@@ -292,8 +402,11 @@ struct SessionChatView: View {
             sessionID = response.session.id
             session = response.session
             messages = []
+            outbox = []
             cursor = nil
             screen = nil
+            prompt = nil
+            activity = nil
         } catch {
             actionError = error.localizedDescription
         }
@@ -311,11 +424,259 @@ struct SessionChatView: View {
 
     private func add(_ image: UIImage) {
         guard let photo = PickedPhoto(image: image) else { return }
-        photos.append(photo)
+        withAnimation { photos.append(photo) }
+    }
+}
+
+private struct OutgoingMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let thumbnails: [UIImage]
+}
+
+// MARK: - Prompt card
+
+/// A question, menu or permission request, answered with a tap.
+private struct PromptCard: View {
+    let prompt: PendingPrompt
+    let onAnswer: (PendingPrompt.Option, String?) async -> Void
+    let onDismiss: () -> Void
+
+    @State private var busy = false
+    @State private var customText = ""
+    @State private var isTypingCustom = false
+    @FocusState private var customFocused: Bool
+
+    private var mainOptions: [PendingPrompt.Option] { prompt.options.filter { !$0.isSecondary && !$0.acceptsText } }
+    private var textOption: PendingPrompt.Option? { prompt.options.first(where: \.acceptsText) }
+    private var secondaryOptions: [PendingPrompt.Option] { prompt.options.filter(\.isSecondary) }
+    private var isPermission: Bool { prompt.code != nil || prompt.question.localizedCaseInsensitiveContains("proceed") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+
+            if let code = prompt.code {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(code)
+                        .font(.callout.monospaced())
+                        .padding(10)
+                }
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            // Short lists sit naturally; long ones scroll within the card.
+            ViewThatFits(in: .vertical) {
+                optionList
+                ScrollView { optionList }
+                    .frame(maxHeight: 360)
+            }
+
+            if !secondaryOptions.isEmpty {
+                HStack {
+                    ForEach(secondaryOptions, id: \.index) { option in
+                        Button(option.label) { choose(option) }
+                            .font(.subheadline)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.accentColor.opacity(0.35)))
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+        .disabled(busy)
+        .overlay { if busy { ProgressView() } }
+        .onChange(of: prompt.id) {
+            busy = false
+            isTypingCustom = false
+            customText = ""
+        }
+    }
+
+    private var optionList: some View {
+        // In checkbox forms the unnumbered "Submit" item goes last, after "write your own".
+        let choices = mainOptions.filter { !prompt.isMultiSelect || $0.isChecked != nil }
+        let actions = mainOptions.filter { prompt.isMultiSelect && $0.isChecked == nil }
+        return VStack(spacing: 8) {
+            ForEach(choices, id: \.index) { option in
+                optionButton(option)
+            }
+            if let textOption {
+                customAnswer(textOption)
+            }
+            ForEach(actions, id: \.index) { option in
+                optionButton(option)
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(isPermission ? (prompt.title ?? "Permission needed") : "Claude is asking",
+                      systemImage: isPermission ? "lock.shield" : "questionmark.bubble")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .textCase(.uppercase)
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 26, height: 26)
+                        .background(Color(.tertiarySystemFill), in: Circle())
+                }
+                .accessibilityLabel("Dismiss (Esc)")
+            }
+
+            if !prompt.steps.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(prompt.steps, id: \.label) { step in
+                        Label(step.label, systemImage: step.isDone ? "checkmark.circle.fill" : "circle")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(step.isDone ? Color.accentColor : .secondary)
+                    }
+                }
+            }
+
+            Text(prompt.question)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let detail = prompt.detail {
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !isPermission, let title = prompt.title {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func optionButton(_ option: PendingPrompt.Option) -> some View {
+        Button { choose(option) } label: {
+            HStack(alignment: .top, spacing: 12) {
+                if let checked = option.isChecked {
+                    Image(systemName: checked ? "checkmark.square.fill" : "square")
+                        .font(.title3)
+                        .foregroundStyle(checked ? Color.accentColor : .secondary)
+                }
+                // "Yes, and switch to auto mode · auto mode handles…" → label plus explanation.
+                let parts = option.label.components(separatedBy: " · ")
+                let explanation = ([parts.dropFirst().joined(separator: " · ")] + [option.detail ?? ""])
+                    .filter { !$0.isEmpty }.joined(separator: " ")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(parts[0])
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    if !explanation.isEmpty {
+                        Text(explanation)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(3)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background(for: option), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func background(for option: PendingPrompt.Option) -> Color {
+        // The unnumbered "Submit" item of a checkbox form, and the first answer of a plain
+        // question, get the accent so the likely choice stands out.
+        if prompt.isMultiSelect && option.isChecked == nil { return Color.accentColor.opacity(0.25) }
+        if !prompt.isMultiSelect && option.index == mainOptions.first?.index { return Color.accentColor.opacity(0.18) }
+        return Color(.secondarySystemFill)
+    }
+
+    @ViewBuilder
+    private func customAnswer(_ option: PendingPrompt.Option) -> some View {
+        if isTypingCustom {
+            HStack(spacing: 8) {
+                TextField("Your answer", text: $customText, axis: .vertical)
+                    .lineLimit(1...4)
+                    .focused($customFocused)
+                    .submitLabel(.send)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                Button {
+                    let text = customText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    busy = true
+                    Task { await onAnswer(option, text) }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
+                }
+                .disabled(customText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .onAppear { customFocused = true }
+        } else {
+            Button {
+                withAnimation { isTypingCustom = true }
+            } label: {
+                Label("Write your own answer…", systemImage: "square.and.pencil")
+                    .font(.body)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemFill), in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func choose(_ option: PendingPrompt.Option) {
+        // Checkbox toggles keep the card up; everything else moves the conversation on.
+        if option.isChecked == nil { busy = true }
+        Task {
+            await onAnswer(option, nil)
+            busy = false
+        }
     }
 }
 
 // MARK: - Messages
+
+/// Consecutive tool calls are collapsed into one row to keep the conversation readable.
+private enum ChatItem: Identifiable {
+    case message(ChatMessage)
+    case tools([ChatMessage])
+
+    var id: String {
+        switch self {
+        case .message(let message): message.id
+        case .tools(let tools): "tools-\(tools[0].id)"
+        }
+    }
+
+    static func group(_ messages: [ChatMessage]) -> [ChatItem] {
+        var items: [ChatItem] = []
+        for message in messages {
+            if message.kind == .tool, case .tools(let tools)? = items.last {
+                items[items.count - 1] = .tools(tools + [message])
+            } else if message.kind == .tool {
+                items.append(.tools([message]))
+            } else {
+                items.append(.message(message))
+            }
+        }
+        return items
+    }
+}
 
 private struct MessageView: View {
     let message: ChatMessage
@@ -323,57 +684,189 @@ private struct MessageView: View {
     var body: some View {
         switch message.kind {
         case .user:
-            HStack {
-                Spacer(minLength: 48)
-                VStack(alignment: .trailing, spacing: 6) {
-                    if message.imageCount > 0 {
-                        Label(message.imageCount == 1 ? "Photo" : "\(message.imageCount) photos", systemImage: "photo")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                    if !message.text.isEmpty {
-                        Text(message.text)
-                            .foregroundStyle(.white)
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 18))
-            }
-
+            UserBubble(text: message.text, thumbnails: [], imageCount: message.imageCount, isPending: false)
         case .assistant:
-            Text(markdown(message.text))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+            AssistantText(text: message.text)
         case .tool:
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: icon(for: message.toolName ?? ""))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text(message.toolName ?? "Tool")
-                    .fontWeight(.semibold)
-                if !message.text.isEmpty {
-                    Text(message.text)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
+            ToolGroupView(tools: [message])
+        }
+    }
+}
+
+private struct UserBubble: View {
+    let text: String
+    let thumbnails: [UIImage]
+    let imageCount: Int
+    let isPending: Bool
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 56)
+            VStack(alignment: .trailing, spacing: 6) {
+                if !thumbnails.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(Array(thumbnails.enumerated()), id: \.offset) { _, image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                // Photos from the transcript (no local thumbnail) show as a badge inside the bubble.
+                let badge = thumbnails.isEmpty && imageCount > 0
+                if !text.isEmpty || badge {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if badge {
+                            Label(imageCount == 1 ? "Photo" : "\(imageCount) photos", systemImage: "photo")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        if !text.isEmpty {
+                            Text(text)
+                                .foregroundStyle(.white)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 20))
+                }
+                if isPending {
+                    Text("Sending…").font(.caption2).foregroundStyle(.secondary)
                 }
             }
-            .font(.caption.monospaced())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+            .opacity(isPending ? 0.7 : 1)
+        }
+    }
+}
+
+/// Claude's reply: Markdown with fenced code blocks shown as code.
+private struct AssistantText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(Self.segments(text).enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .prose(let prose):
+                    Text(Self.markdown(prose))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .code(let code):
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(code)
+                            .font(.callout.monospaced())
+                            .textSelection(.enabled)
+                            .padding(12)
+                    }
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    enum Segment { case prose(String), code(String) }
+
+    static func segments(_ text: String) -> [Segment] {
+        var segments: [Segment] = []
+        var prose: [String] = []
+        var code: [String]?
+        for line in text.components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                if let block = code {
+                    segments.append(.code(block.joined(separator: "\n")))
+                    code = nil
+                } else {
+                    if !prose.isEmpty { segments.append(.prose(prose.joined(separator: "\n"))); prose = [] }
+                    code = []
+                }
+            } else if code != nil {
+                code!.append(line)
+            } else {
+                prose.append(line)
+            }
+        }
+        if let block = code { segments.append(.code(block.joined(separator: "\n"))) }
+        if !prose.isEmpty { segments.append(.prose(prose.joined(separator: "\n"))) }
+        return segments.filter {
+            if case .prose(let text) = $0 { return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            return true
         }
     }
 
-    private func markdown(_ text: String) -> AttributedString {
+    static func markdown(_ text: String) -> AttributedString {
+        // Headings become bold lines; everything else uses inline Markdown.
+        let cleaned = text.components(separatedBy: "\n").map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("#") {
+                let heading = trimmed.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
+                return "**\(heading)**"
+            }
+            return line
+        }.joined(separator: "\n")
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        return (try? AttributedString(markdown: cleaned, options: options)) ?? AttributedString(text)
+    }
+}
+
+private struct ToolGroupView: View {
+    let tools: [ChatMessage]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: Self.icon(for: tools.last?.toolName ?? ""))
+                        .frame(width: 16)
+                    Text(summary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    if tools.count > 1 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.tertiarySystemFill), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(tools.count < 2)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(tools) { tool in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: Self.icon(for: tool.toolName ?? "")).frame(width: 16)
+                            Text(tool.toolName ?? "Tool").fontWeight(.semibold)
+                            Text(tool.text).lineLimit(1).truncationMode(.middle)
+                        }
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.leading, 12)
+            }
+        }
     }
 
-    private func icon(for tool: String) -> String {
+    private var summary: String {
+        guard let last = tools.last else { return "" }
+        let current = [last.toolName, last.text].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return tools.count > 1 ? "\(tools.count) steps · \(current)" : current
+    }
+
+    static func icon(for tool: String) -> String {
         switch tool {
         case "Read": "doc.text"
         case "Edit", "MultiEdit", "Write", "NotebookEdit": "pencil"
@@ -382,46 +875,45 @@ private struct MessageView: View {
         case "WebFetch", "WebSearch": "globe"
         case "Task", "Agent": "person.2"
         case "TodoWrite": "checklist"
+        case "Question": "questionmark.bubble"
         default: "wrench.and.screwdriver"
         }
     }
 }
 
-// MARK: - Terminal
-
-/// The last few non-blank lines of the Mac's terminal, so prompts and progress are visible.
-private struct TerminalPanel: View {
-    let screen: ScreenSnapshot
-    let onExpand: () -> Void
-
-    private var tail: [String] {
-        var lines = screen.lines
-        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
-        return Array(lines.suffix(8))
-    }
+private struct WorkingIndicator: View {
+    let label: String?
+    @State private var phase = 0.0
 
     var body: some View {
-        Button(action: onExpand) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(tail.enumerated()), id: \.offset) { _, line in
-                        Text(line.isEmpty ? " " : line)
-                    }
+        HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach(0..<3) { dot in
+                    Circle()
+                        .frame(width: 7, height: 7)
+                        .opacity(0.35 + 0.65 * max(0, sin(phase - Double(dot) * 0.8)))
                 }
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundStyle(Color(white: 0.88))
-                .padding(8)
-                .fixedSize()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(white: 0.11))
+            .foregroundStyle(Color.accentColor)
+            Text(label ?? "Working…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Terminal. Double-tap to show the full screen.")
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemBackground), in: Capsule())
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { phase = .pi * 2 }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label ?? "Claude is working")
     }
 }
 
-private struct FullScreenTerminal: View {
+// MARK: - Terminal (fallback)
+
+/// The raw terminal screen, kept in the menu for anything the cards don't cover.
+private struct TerminalSheet: View {
     @Environment(\.dismiss) private var dismiss
     let screen: ScreenSnapshot
 
@@ -447,33 +939,7 @@ private struct FullScreenTerminal: View {
                 }
             }
         }
-    }
-}
-
-/// Keys for answering Claude Code's prompts and menus.
-private struct KeyBar: View {
-    let onPress: (TerminalKey) -> Void
-
-    private let keys: [(TerminalKey, String)] = [
-        (.digit1, "1"), (.digit2, "2"), (.digit3, "3"),
-        (.enter, "⏎ Enter"), (.escape, "Esc"), (.up, "↑"), (.down, "↓"),
-        (.shiftTab, "⇧⇥ Mode"), (.tab, "⇥"), (.ctrlC, "⌃C"),
-    ]
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(keys, id: \.0) { key, label in
-                    Button(label) { onPress(key) }
-                        .font(.callout.monospaced())
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-        }
-        .background(.bar)
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -496,7 +962,7 @@ struct PickedPhoto: Identifiable {
         }
         guard let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
         self.jpeg = jpeg
-        thumbnail = resized.preparingThumbnail(of: CGSize(width: 160, height: 160)) ?? resized
+        thumbnail = resized.preparingThumbnail(of: CGSize(width: 200, height: 200)) ?? resized
     }
 }
 

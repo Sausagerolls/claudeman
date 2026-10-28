@@ -213,6 +213,12 @@ final class RemoteAccess: ObservableObject {
             return await type(input, into: session)
         }
 
+        if request.method == "POST", let id = Self.match(route, "sessions", nil, "answer") {
+            guard let session = model.session(id: id) else { return .error("Session not found.", status: 404) }
+            guard let answer = decode(AnswerRequest.self, request) else { return .error("Invalid body.", status: 400) }
+            return await self.answer(answer, in: session)
+        }
+
         if request.method == "POST", let id = Self.match(route, "sessions", nil, "attachments") {
             guard model.session(id: id) != nil else { return .error("Session not found.", status: 404) }
             return saveAttachment(request)
@@ -261,13 +267,16 @@ final class RemoteAccess: ObservableObject {
             slice = Array(messages.suffix(300))
         }
 
+        let screen = session.screen()
         return ChatResponse(
             session: session.remote,
             messages: slice,
             cursor: generation << 32 | messages.count,
             reset: reset,
             hasTranscript: reader != nil,
-            screen: session.screen()
+            screen: screen,
+            prompt: session.isRunning ? ScreenReader.prompt(in: screen.lines) : nil,
+            activity: session.isRunning ? ScreenReader.activity(in: screen.lines) : nil
         )
     }
 
@@ -301,6 +310,31 @@ final class RemoteAccess: ObservableObject {
             // Wait until the picked conversation is written to after the session started.
             return candidates.first { $0.modified >= session.startedAt.addingTimeInterval(-2) }?.id
         }
+    }
+
+    /// Chooses an option in the prompt currently on screen. The prompt id must still match,
+    /// so a tap on a question that has since changed can't pick the wrong thing.
+    private func answer(_ answer: AnswerRequest, in session: TerminalSession) async -> HTTPResponse {
+        guard let prompt = ScreenReader.prompt(in: session.screen().lines), prompt.id == answer.promptID else {
+            return .error("That question is no longer showing.", status: 409)
+        }
+        guard let option = prompt.options.first(where: { $0.index == answer.optionIndex }) else {
+            return .error("Unknown option.", status: 400)
+        }
+
+        if option.acceptsText, let text = answer.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            for key in ScreenReader.navigationKeys(to: option, in: prompt) {
+                session.press(key)
+                try? await Task.sleep(for: .milliseconds(40))
+            }
+            await session.send(text: text, imagePaths: [], submit: true)
+        } else {
+            for key in ScreenReader.keys(toChoose: option, in: prompt) {
+                session.press(key)
+                try? await Task.sleep(for: .milliseconds(40))
+            }
+        }
+        return .json(["ok": true])
     }
 
     private func type(_ input: InputRequest, into session: TerminalSession) async -> HTTPResponse {
@@ -389,7 +423,17 @@ private extension LaunchMode {
 
 extension TerminalSession {
     var remote: RemoteSession {
-        RemoteSession(id: id, name: name, title: title, isRunning: isRunning, exitCode: exitCode, startedAt: startedAt)
+        var pendingQuestion: String?
+        var isWorking: Bool?
+        if isRunning {
+            let lines = screen().lines
+            pendingQuestion = ScreenReader.prompt(in: lines)?.question
+            isWorking = ScreenReader.activity(in: lines).isWorking
+        }
+        return RemoteSession(
+            id: id, name: name, title: title, isRunning: isRunning, exitCode: exitCode, startedAt: startedAt,
+            pendingQuestion: pendingQuestion, isWorking: isWorking
+        )
     }
 }
 

@@ -226,14 +226,25 @@ private struct SessionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(session.isRunning ? Color.green : Color.secondary.opacity(0.4))
+                .fill(session.pendingQuestion != nil ? Color.orange : session.isRunning ? Color.green : Color.secondary.opacity(0.4))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.name).font(.body.weight(.medium))
                 if !session.title.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(session.title).font(.subheadline).lineLimit(2)
                 }
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                if let question = session.pendingQuestion {
+                    Label(question, systemImage: "questionmark.bubble.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                } else if session.isWorking == true {
+                    Label("Working…", systemImage: "ellipsis")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if isBusy {

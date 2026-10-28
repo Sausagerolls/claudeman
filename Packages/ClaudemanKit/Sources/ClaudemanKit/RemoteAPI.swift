@@ -124,14 +124,21 @@ public struct RemoteSession: Codable, Identifiable, Hashable, Sendable {
     public var isRunning: Bool
     public var exitCode: Int32?
     public var startedAt: Date
+    /// The question Claude is waiting on, if any. Optional for compatibility with older Macs.
+    public var pendingQuestion: String?
+    /// True while Claude is working on a reply.
+    public var isWorking: Bool?
 
-    public init(id: UUID, name: String, title: String, isRunning: Bool, exitCode: Int32?, startedAt: Date) {
+    public init(id: UUID, name: String, title: String, isRunning: Bool, exitCode: Int32?, startedAt: Date,
+                pendingQuestion: String? = nil, isWorking: Bool? = nil) {
         self.id = id
         self.name = name
         self.title = title
         self.isRunning = isRunning
         self.exitCode = exitCode
         self.startedAt = startedAt
+        self.pendingQuestion = pendingQuestion
+        self.isWorking = isWorking
     }
 }
 

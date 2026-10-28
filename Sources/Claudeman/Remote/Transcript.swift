@@ -175,12 +175,17 @@ final class TranscriptReader {
     }
 
     private static func displayName(forTool name: String) -> String {
+        if name == "AskUserQuestion" { return "Question" }
         // MCP tools are named mcp__<server>__<tool>; show just the tool.
         if name.hasPrefix("mcp__"), let last = name.components(separatedBy: "__").last { return last }
         return name
     }
 
     private static func toolSummary(_ input: [String: Any]) -> String {
+        // AskUserQuestion: show the question itself.
+        if let questions = input["questions"] as? [[String: Any]], let first = questions.first?["question"] as? String {
+            return questions.count > 1 ? "\(first) (+\(questions.count - 1) more)" : first
+        }
         for key in ["file_path", "notebook_path", "path"] {
             if let path = input[key] as? String { return (path as NSString).abbreviatingWithTildeInPath }
         }

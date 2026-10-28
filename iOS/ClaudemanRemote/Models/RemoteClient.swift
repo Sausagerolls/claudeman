@@ -68,6 +68,10 @@ struct RemoteClient: Sendable {
         let _: [String: Bool] = try await send("POST", RemoteAPI.Path.input(sessionID), body: input)
     }
 
+    func answer(sessionID: UUID, _ answer: AnswerRequest) async throws {
+        let _: [String: Bool] = try await send("POST", RemoteAPI.Path.answer(sessionID), body: answer)
+    }
+
     /// Uploads a JPEG and returns its attachment id.
     func uploadImage(sessionID: UUID, jpeg: Data) async throws -> String {
         let response: AttachmentResponse = try await send(
