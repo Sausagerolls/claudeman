@@ -50,11 +50,22 @@ public struct ServerInfo: Codable, Sendable {
     public var name: String
     public var apiVersion: Int
     public var appVersion: String
+    /// Stable id of this Mac, so a phone can tell it's reached the right one at a new address.
+    /// Optional so older Macs stay compatible.
+    public var id: String?
+    /// Every address this Mac can currently be reached on (local network, Tailscale).
+    /// Only sent to paired devices.
+    public var addresses: [String]?
+    public var port: UInt16?
 
-    public init(name: String, apiVersion: Int, appVersion: String) {
+    public init(name: String, apiVersion: Int, appVersion: String, id: String? = nil,
+                addresses: [String]? = nil, port: UInt16? = nil) {
         self.name = name
         self.apiVersion = apiVersion
         self.appVersion = appVersion
+        self.id = id
+        self.addresses = addresses
+        self.port = port
     }
 }
 

@@ -6,6 +6,7 @@ struct RemoteSettingsView: View {
     @ObservedObject private var remote = RemoteAccess.shared
     @AppStorage(SettingsKey.remoteEnabled) private var enabled = false
     @AppStorage(SettingsKey.remotePort) private var port = Int(RemoteAPI.defaultPort)
+    @AppStorage(SettingsKey.remoteKeepAwake) private var keepAwake = true
 
     var body: some View {
         Form {
@@ -14,8 +15,10 @@ struct RemoteSettingsView: View {
                 TextField("Port", value: $port, format: .number.grouping(.never))
                     .disabled(!enabled)
                 LabeledContent("Status") { statusLabel }
+                Toggle("Keep Mac awake while remote control is on", isOn: $keepAwake)
+                    .disabled(!enabled)
             } footer: {
-                Text("Paired devices can list projects and start, restart or stop sessions. They can't see or type into a session.")
+                Text("Paired devices can manage sessions, read their conversations and send messages. A sleeping Mac can't answer your phone, so this stops idle sleep; the display can still turn off, and closing a laptop's lid still sleeps. This uses more battery when unplugged.")
             }
 
             if enabled {

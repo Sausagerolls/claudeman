@@ -21,13 +21,9 @@ struct SessionChatView: View {
     @AppStorage(SettingsKey.keepAwake) private var keepAwake = false
     @State private var isRevealed = false
     /// True while the latest message is on screen; new messages only auto-scroll then.
-    /// Whether the end-of-conversation marker is on screen. Exact, but a big jump can remove the
-    /// marker without reporting it left, so it's paired with a coarse distance check.
-    @State private var endMarkerVisible = true
-    /// More than a screen away from the end, from scroll geometry (heights are estimates, which
-    /// is fine at this scale).
-    @State private var farFromEnd = false
-    private var isNearBottom: Bool { endMarkerVisible && !farFromEnd }
+    /// True while the end of the conversation is on screen; new messages only auto-scroll then.
+    @State private var isNearBottom = true
+    @State private var endMarkers = 0
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var cursor: Int?
     @State private var hasTranscript = true
@@ -160,11 +156,27 @@ struct SessionChatView: View {
                         WorkingIndicator(label: activity?.label)
                             .transition(.opacity)
                     }
-                    // End-of-conversation marker. Whether it's on screen decides auto-scrolling and
-                    // the Latest button (content heights are only estimates in a lazy stack).
-                    Color.clear.frame(height: 1)
-                        .onScrollVisibilityChange(threshold: 0.1) { visible in
-                            endMarkerVisible = visible
+                    // End-of-conversation marker: it decides auto-scrolling and the Latest button.
+                    // It overlaps the last 150pt without taking up room, so "near the end" has some
+                    // tolerance. Content heights can't be used for this: in a lazy stack they're only
+                    // estimates, wrong by more than a screen in long chats.
+                    Color.clear.frame(height: 150)
+                        .padding(.top, -150)
+                        .allowsHitTesting(false)
+                        .onScrollVisibilityChange(threshold: 0.01) { visible in
+                            isNearBottom = visible
+                        }
+                        // The lazy stack builds and discards the marker near the screen edges, and a big
+                        // jump or a rebuild doesn't always report a visibility change.
+                        // During a rebuild the new marker can appear before the old one leaves, so
+                        // only count the end as gone when no marker is left.
+                        .onAppear {
+                            endMarkers += 1
+                            isNearBottom = true
+                        }
+                        .onDisappear {
+                            endMarkers -= 1
+                            if endMarkers <= 0 { isNearBottom = false }
                         }
                 }
                 .padding(.horizontal)
@@ -173,14 +185,9 @@ struct SessionChatView: View {
                 .animation(.easeOut(duration: 0.2), value: isWorking)
             }
             .scrollPosition($scrollPosition)
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                let visibleBottom = geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom
-                return geometry.contentSize.height - visibleBottom > geometry.containerSize.height
-            } action: { _, far in
-                farFromEnd = far
-            }
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)   // stay at the end as messages grow
             .opacity(isRevealed ? 1 : 0)
             .overlay {
                 if !isRevealed { ProgressView() }
@@ -219,11 +226,13 @@ struct SessionChatView: View {
             .onChange(of: prompt?.id) { if isRevealed && isNearBottom { scrollToBottom() } }
             #if DEBUG
             .task(id: isRevealed) {
-                // Development aid: `-scrollTest` scrolls to the top, then runs the Latest button's jump.
+                // Development aid: `-scrollTest` steps down from the top, then runs the Latest button's jump.
                 guard isRevealed, ProcessInfo.processInfo.arguments.contains("-scrollTest") else { return }
                 try? await Task.sleep(for: .seconds(2))
-                scrollPosition.scrollTo(edge: .top)
-                try? await Task.sleep(for: .seconds(3))
+                for y in stride(from: 0, through: 3300, by: 550) {
+                    scrollPosition.scrollTo(y: CGFloat(y))
+                    try? await Task.sleep(for: .seconds(1.5))
+                }
                 scrollToBottom()
             }
             #endif
@@ -249,6 +258,7 @@ struct SessionChatView: View {
             if isNearBottom { break }
         }
         scrollPosition.scrollTo(edge: .bottom)
+        isNearBottom = true
     }
 
     private var emptyState: some View {
@@ -433,6 +443,8 @@ struct SessionChatView: View {
             session?.isRunning = false
         } catch {
             connectionError = "Reconnecting…"
+            // The Mac may have a new address, or this device may be on another network.
+            if await store.reconnect(mac) { await refresh() }
         }
     }
 
@@ -554,12 +566,13 @@ private struct PromptCard: View {
             header
 
             if let code = prompt.code {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(code)
-                        .font(.callout.monospaced())
-                        .padding(10)
-                }
-                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                // Wrapped so you can read the whole command before approving it.
+                Text(code)
+                    .font(.footnote.monospaced())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
             }
 
             // Short lists sit naturally; long ones scroll within the card.
@@ -862,13 +875,14 @@ private struct AssistantText: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 case .code(let code):
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(code)
-                            .font(.callout.monospaced())
-                            .textSelection(.enabled)
-                            .padding(12)
-                    }
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    // Wrapped rather than scrolled sideways, so nothing runs off the screen.
+                    Text(code)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 }
             }
         }

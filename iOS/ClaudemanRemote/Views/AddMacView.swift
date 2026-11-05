@@ -262,6 +262,9 @@ struct PairView: View {
                 .pair(code: code, deviceName: UIDevice.current.name)
             var paired = mac
             paired.name = response.server.name
+            paired.serverID = response.server.id
+            // Keep every address we know of, for reconnecting from another network later.
+            paired.knownHosts = response.server.addresses ?? target.hosts
             store.add(paired, token: response.token)
             Haptics.notify(.success)
             onPaired(paired)

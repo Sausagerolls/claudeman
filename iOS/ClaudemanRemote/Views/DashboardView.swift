@@ -94,7 +94,8 @@ struct DashboardView: View {
         }
         .onChange(of: status?.projects.count) {
             guard ProcessInfo.processInfo.arguments.contains("-openFirstSession"), debugSession == nil else { return }
-            debugSession = status?.projects.flatMap(\.sessions).first(where: \.isRunning)
+            let sessions = status?.projects.flatMap(\.sessions) ?? []
+            debugSession = sessions.first(where: \.isRunning) ?? sessions.first
         }
         #endif
         .toolbar {
@@ -158,7 +159,9 @@ struct DashboardView: View {
     private func refresh() async {
         guard let client = store.client(for: mac) else { return }
         do {
-            status = try await client.status()
+            let response = try await client.status()
+            status = response
+            store.learn(response.server, about: mac)
             lastUpdated = Date()
             connectionError = nil
             isUnauthorized = false
@@ -168,6 +171,8 @@ struct DashboardView: View {
         } catch let error as URLError where error.code == .cancelled {
         } catch {
             connectionError = error.localizedDescription
+            // The Mac may have a new address, or this device may be on another network.
+            if await store.reconnect(mac) { await refresh() }
         }
     }
 

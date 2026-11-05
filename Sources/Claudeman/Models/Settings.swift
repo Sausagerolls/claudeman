@@ -18,6 +18,7 @@ enum SettingsKey {
     static let cloneDirectory = "cloneDirectory"
     static let remoteEnabled = "remoteEnabled"
     static let remotePort = "remotePort"
+    static let remoteKeepAwake = "remoteKeepAwake"
 }
 
 enum SettingsDefault {
@@ -126,6 +127,7 @@ extension UserDefaults {
     var confirmQuit: Bool { object(forKey: SettingsKey.confirmQuit) as? Bool ?? true }
 
     var remoteEnabled: Bool { bool(forKey: SettingsKey.remoteEnabled) }
+    var remoteKeepAwake: Bool { object(forKey: SettingsKey.remoteKeepAwake) as? Bool ?? true }
 
     var remotePort: UInt16 {
         let value = integer(forKey: SettingsKey.remotePort)

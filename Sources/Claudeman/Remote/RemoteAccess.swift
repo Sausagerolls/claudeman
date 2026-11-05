@@ -30,13 +30,19 @@ final class RemoteAccess: ObservableObject {
     private var transcripts: [UUID: TranscriptReader] = [:]
     /// Uploaded photos by attachment id → file path.
     private var attachments: [String: String] = [:]
+    private var awakeActivity: NSObjectProtocol?
     private var failedPairingAttempts = 0
     private var runningPort: UInt16?
     private let devicesKey = "remoteDevices"
 
     private lazy var server = HTTPServer(
         handler: { request in await RemoteAccess.shared.handle(request) },
-        onStateChange: { state in Task { @MainActor in RemoteAccess.shared.state = state } }
+        onStateChange: { state in
+            Task { @MainActor in
+                RemoteAccess.shared.state = state
+                if case .failed = state { RemoteAccess.shared.scheduleRetry() }
+            }
+        }
     )
 
     private init() {
@@ -49,11 +55,30 @@ final class RemoteAccess: ObservableObject {
         Host.current().localizedName ?? "Mac"
     }
 
+    /// Random id that identifies this Mac to paired devices, created once.
+    private var serverID: String {
+        let key = "remoteServerID"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+
+    /// What paired devices get: also lists where this Mac can be reached, so they can
+    /// find it again after its address or their network changes.
+    private var pairedServerInfo: ServerInfo {
+        var info = serverInfo
+        info.addresses = NetworkAddresses.current().map(\.address)
+        info.port = runningPort
+        return info
+    }
+
     var serverInfo: ServerInfo {
         ServerInfo(
             name: serviceName,
             apiVersion: RemoteAPI.version,
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
+            id: serverID
         )
     }
 
@@ -64,6 +89,7 @@ final class RemoteAccess: ObservableObject {
     /// `runningPort` is the port we asked for (set synchronously); `state` arrives later.
     func applySettings() {
         let defaults = UserDefaults.standard
+        updateKeepAwake()
         if defaults.remoteEnabled {
             guard runningPort != defaults.remotePort else { return }
             runningPort = defaults.remotePort
@@ -72,6 +98,29 @@ final class RemoteAccess: ObservableObject {
             runningPort = nil
             cancelPairing()
             server.stop()
+        }
+    }
+
+    /// A sleeping Mac can't answer the phone. While remote control is on, stop it sleeping when
+    /// idle (the display can still turn off; closing a laptop's lid still sleeps).
+    private func updateKeepAwake() {
+        let defaults = UserDefaults.standard
+        let wanted = defaults.remoteEnabled && defaults.remoteKeepAwake
+        if wanted, awakeActivity == nil {
+            awakeActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.idleSystemSleepDisabled], reason: "Claudeman remote control"
+            )
+        } else if !wanted, let activity = awakeActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            awakeActivity = nil
+        }
+    }
+
+    /// Keeps trying after a failure, so a temporary problem doesn't need a trip to Settings.
+    private func scheduleRetry() {
+        Task {
+            try? await Task.sleep(for: .seconds(15))
+            if case .failed = state { retry() }
         }
     }
 
@@ -130,7 +179,7 @@ final class RemoteAccess: ObservableObject {
         let name = request.deviceName.trimmingCharacters(in: .whitespaces)
         devices.append(PairedDevice(name: name.isEmpty ? "iOS device" : String(name.prefix(64)), tokenHash: Self.hash(token)))
         cancelPairing()
-        return .json(PairResponse(token: token, server: serverInfo), status: 201)
+        return .json(PairResponse(token: token, server: pairedServerInfo), status: 201)
     }
 
     private func authenticate(_ request: HTTPRequest) -> Bool {
@@ -414,7 +463,7 @@ final class RemoteAccess: ObservableObject {
                 sessions: model.sessions(for: project.id).map(\.remote)
             )
         }
-        return StatusResponse(server: serverInfo, projects: projects)
+        return StatusResponse(server: pairedServerInfo, projects: projects)
     }
 
     private func decode<T: Decodable>(_ type: T.Type, _ request: HTTPRequest) -> T? {

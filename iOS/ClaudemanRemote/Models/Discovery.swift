@@ -49,6 +49,31 @@ final class Discovery: ObservableObject {
         browser = nil
     }
 
+    /// One-shot search for a Mac by its Bonjour name, used to find it again after its address changed.
+    static func find(named name: String, timeout: TimeInterval = 2.5) async -> (String, UInt16)? {
+        let endpoint: NWEndpoint? = await withCheckedContinuation { continuation in
+            let browser = NWBrowser(for: .bonjour(type: RemoteAPI.bonjourType, domain: nil), using: .tcp)
+            let resumed = ResumeOnce()
+            browser.browseResultsChangedHandler = { results, _ in
+                let match = results.first { result in
+                    if case let .service(found, _, _, _) = result.endpoint { return found == name }
+                    return false
+                }
+                if let match, resumed.claim() {
+                    browser.cancel()
+                    continuation.resume(returning: match.endpoint)
+                }
+            }
+            browser.start(queue: .global())
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                browser.cancel()
+                if resumed.claim() { continuation.resume(returning: nil) }
+            }
+        }
+        guard let endpoint else { return nil }
+        return await resolve(DiscoveredMac(name: name, endpoint: endpoint)).map { ($0.host, $0.port) }
+    }
+
     /// Connects briefly to the service to learn its address, then disconnects.
     static func resolve(_ mac: DiscoveredMac) async -> (host: String, port: UInt16)? {
         let parameters = NWParameters.tcp

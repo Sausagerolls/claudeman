@@ -62,6 +62,8 @@ The companion app lives in `iOS/`. It's a SwiftUI app for iOS 18 and later.
 
 To control the Mac when you're away from home, install [Tailscale](https://tailscale.com) on both devices. Then add the Mac by its Tailscale address, which Settings › Remote shows.
 
+The app remembers every address the Mac reports. If the current one stops answering, for example when you change networks, it finds the Mac again by itself, and checks the Mac's id before sending its token anywhere new. A sleeping Mac can't answer, so by default Claudeman stops idle sleep while remote control is on. You can turn this off in Settings › Remote. Closing a laptop's lid still sleeps it.
+
 ### What it can do
 
 - See every project and its sessions: running or ended, plus the task title Claude sets.

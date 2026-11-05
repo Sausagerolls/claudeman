@@ -22,13 +22,15 @@ struct RemoteClient: Sendable {
 
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 8
+        // Short, so a stale address is noticed quickly and the app can look for the Mac elsewhere.
+        // Slow requests (photo uploads, images) set their own timeout.
+        configuration.timeoutIntervalForRequest = 5
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
 
-    func info() async throws -> ServerInfo {
-        try await send("GET", RemoteAPI.Path.info)
+    func info(timeout: TimeInterval? = nil) async throws -> ServerInfo {
+        try await send("GET", RemoteAPI.Path.info, rawBody: nil, contentType: nil, timeout: timeout)
     }
 
     func pair(code: String, deviceName: String) async throws -> PairResponse {
